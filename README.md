@@ -185,24 +185,37 @@ Parameter counting is centralized in `src/utils.py`:
 from src.utils import count_parameters, parameter_summary
 ```
 
-The evaluation script loads the selected model and counts all model parameters
-before generating samples. Each submitted model is limited to
-**100,000,000 parameters**, counted per model: `ModelOneNFE` and
-`ModelFewNFE` each get their own 100M budget. Models above the limit are
-rejected:
+All learned models used during training or sampling, including teacher models,
+must **individually have no more than 100,000,000 parameters**.
+
+The 100M limit is applied **separately to each model**. Parameter counts of
+different models, such as a teacher and a student, are **not summed together**.
+However, for each model, the parameter count refers to the **entire model
+framework, including all learnable components**, not only the main backbone.
+
+For example:
+
+- Teacher ≤ 100M / Student ≤ 100M → **Allowed**
+- Teacher > 100M / Student ≤ 100M → **Not Allowed**
+- Teacher ≤ 100M / Student > 100M → **Not Allowed**
+
+For submitted models, the evaluation script loads the selected model and counts
+all registered parameters before generating samples. `ModelOneNFE` and
+`ModelFewNFE` are checked independently. Models above the limit are rejected:
 
 ```text
 WARNING: model has more than 100,000,000 parameters. Evaluation stopped.
 ```
 
-This check includes frozen parameters, buffers excluded. It covers every
-module registered on the model, so auxiliary networks (EMA copies, teacher
-models, discriminators, encoders) count toward the same budget unless they are
-dropped from the submitted checkpoint.
+The parameter count includes frozen parameters and excludes buffers. All
+registered modules that are part of a model, including auxiliary components
+such as EMA copies, encoders, discriminators, or additional heads, are included
+in that model's parameter count.
 
-- ⚠️ Each model parameter size should not exceed 100M.
-- ⚠️ A model that exceeds the limit is not evaluated and scores zero for that
-  NFE mode; the other mode is scored independently.
+- ⚠️ Each learned model used during training or sampling must individually have no more than 100M parameters.
+- ⚠️ The 100M limit applies to the entire model framework, not only the main backbone.
+- ⚠️ Parameter counts of separate models, such as a teacher and a student, are not added together.
+- ⚠️ A submitted model that exceeds the limit is not evaluated and scores zero for that NFE mode; the other mode is scored independently.
 
 ## Training
 
