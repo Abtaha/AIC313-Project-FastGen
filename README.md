@@ -251,8 +251,7 @@ write-up will result in a zero score.
 
 ### What You CANNOT Do
 
-- ❌ **Do NOT use pre-trained image-generation models:** You must train both
-  submitted models from scratch.
+- ❌ **Do NOT use pre-trained image-generation models:** All learned models, including teacher model, used during training or sampling must be trained from scratch using only the provided training split.
 - ❌ **Do NOT modify the base `Model` class:** Its checkpoint-loading and
   parameter-counting utilities are fixed for consistent evaluation.
 - ❌ **Do NOT modify the provided dataset interface or evaluation script:**
