@@ -1,0 +1,32 @@
+# Python environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+# Local configuration and OS/editor files
+.env
+.env.*
+!.env.example
+.DS_Store
+.idea/
+.vscode/
+
+# Downloaded images and generated artifacts; keep the official split metadata.
+data/*
+!data/pokemon-generation-one-22k/
+data/pokemon-generation-one-22k/*
+!data/pokemon-generation-one-22k/train_split.txt
+!data/pokemon-generation-one-22k/val_split.txt
+!data/pokemon-generation-one-22k/category_to_id.json
+checkpoints/
+results/
+runs/
+*.ckpt
+*.pt
+*.pth

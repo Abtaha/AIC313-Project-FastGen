@@ -219,6 +219,18 @@ in that model's parameter count.
 
 ## Training
 
+The added flow-matching baseline can train both existing implementations:
+
+```shell
+python train.py --mode both --device cuda --epochs 100 --batch_size 32
+```
+
+Continue an interrupted run with `python train.py --mode both --device cuda --resume`.
+Training settings and progress are restored from each mode's checkpoint.
+
+See [TRAINING.md](TRAINING.md) for configuration, smoke-test instructions,
+output details, and known inconsistencies in the current project.
+
 Training is part of the student implementation. Students must train both
 NFE-specific models and save two compatible checkpoints:
 
@@ -502,4 +514,3 @@ zero score
 ## Dataset Citation
 
 - [Pokemon Generation One - 22k](https://www.kaggle.com/datasets/bhawks/pokemon-generation-one-22k)
-
