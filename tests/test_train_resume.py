@@ -41,9 +41,13 @@ def arguments(root, **overrides):
     values = dict(
         checkpoint_dir=str(root / "checkpoints"), output_dir=str(root / "runs"),
         resume=None, specified=[], seed=42, width=16, depth=1, heads=2,
+        backbone="dit", base_channels=None,
         patch_size=8, knots=(0.25, 0.5, 0.75), batch_size=2, epochs=2,
         max_steps=None, precision="fp32", lr=1e-4, weight_decay=0.01,
         grad_clip=1.0, sample_every=10, save_every=1,
+        one_objective="meanflow", mf_ratio=0.25, mf_time_mean=-0.4,
+        mf_time_std=1.0, mf_power=1.0, mf_eps=1e-3,
+        checkpoint_every=10, fid_every=0, fid_batch_size=32, fid_seed=1234,
     )
     values.update(overrides)
     return argparse.Namespace(**values)
@@ -78,19 +82,19 @@ class ResumeTests(unittest.TestCase):
         else:
             self.assertEqual(first, second)
 
-    def test_exact_continuation(self):
+    def check_exact_continuation(self, architecture):
         for mode in ("one_nfe", "few_nfe"):
             for boundary in (2, 3):
                 with self.subTest(mode=mode, boundary=boundary), tempfile.TemporaryDirectory() as tmp:
                     whole, resumed = Path(tmp) / "whole", Path(tmp) / "resumed"
-                    train_mode(arguments(whole), TinyDataModule(), torch.device("cpu"), mode)
-                    train_mode(arguments(resumed, max_steps=boundary), TinyDataModule(), torch.device("cpu"), mode)
+                    train_mode(arguments(whole, **architecture), TinyDataModule(), torch.device("cpu"), mode)
+                    train_mode(arguments(resumed, max_steps=boundary, **architecture), TinyDataModule(), torch.device("cpu"), mode)
                     log = resumed / "runs" / mode / "train.jsonl"
                     # Emulate log writes after the last persisted checkpoint.
                     with log.open("a") as file:
                         file.write('{"step": 999, "loss": 0}\n{"partial":')
                     # Architecture/batch defaults must come from the checkpoint.
-                    args = arguments(resumed, resume="auto", width=512, batch_size=32)
+                    args = arguments(resumed, resume="auto", width=640, depth=13, batch_size=32)
                     train_mode(args, TinyDataModule(), torch.device("cpu"), mode)
                     expected, actual = load(whole, mode), load(resumed, mode)
                     for key in ("state_dict", "optimizer", "scheduler", "scaler", "rng_state",
@@ -103,10 +107,26 @@ class ResumeTests(unittest.TestCase):
                                      [(r["loss"], r["lr"]) for r in original])
                     model = Model.load_checkpoint(str(resumed / "checkpoints" / f"{mode}.ckpt"),
                                                   evaluate_mode=mode, device="cpu")
-                    self.assertEqual(model.backbone.config.width, 16)
+                    self.assertEqual(model.backbone.config.width, architecture.get("width", 16))
+                    self.assertEqual(model.backbone.config.backbone, architecture.get("backbone", "dit"))
+                    calls = []
+                    hook = model.backbone.register_forward_hook(lambda *unused: calls.append(1))
+                    samples = model.sample((2, 3, 64, 64), device="cpu", category=torch.tensor([0, 150]))
+                    hook.remove()
+                    self.assertEqual(len(calls), 1 if mode == "one_nfe" else 4)
+                    self.assertEqual(samples.shape, (2, 3, 64, 64))
+                    self.assertTrue(torch.isfinite(samples).all())
+                    self.assertTrue((samples.abs() <= 1).all())
                     before = (resumed / "checkpoints" / f"{mode}.ckpt").stat().st_mtime_ns
                     train_mode(args, TinyDataModule(), torch.device("cpu"), mode)
                     self.assertEqual(before, (resumed / "checkpoints" / f"{mode}.ckpt").stat().st_mtime_ns)
+
+    def test_exact_dit_continuation(self):
+        self.check_exact_continuation({})
+
+    def test_exact_hybrid_continuation(self):
+        self.check_exact_continuation(dict(backbone="hybrid", width=128, base_channels=32,
+                                           depth=1, specified=["depth"]))
 
     def test_incompatible_resume_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -115,6 +135,15 @@ class ResumeTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "batch_size"):
                 train_mode(arguments(root, resume="auto", batch_size=4, specified=["batch_size"]),
                            TinyDataModule(), torch.device("cpu"), "one_nfe")
+            with self.assertRaisesRegex(ValueError, "backbone"):
+                train_mode(arguments(root, resume="auto", backbone="hybrid", specified=["backbone"]),
+                           TinyDataModule(), torch.device("cpu"), "one_nfe")
+            with self.assertRaisesRegex(ValueError, "one_objective"):
+                train_mode(arguments(root, resume="auto", one_objective="flow_matching", specified=["one_objective"]),
+                           TinyDataModule(), torch.device("cpu"), "one_nfe")
+            with self.assertRaisesRegex(ValueError, "mf_ratio"):
+                train_mode(arguments(root, resume="auto", mf_ratio=0.5, specified=["mf_ratio"]),
+                           TinyDataModule(), torch.device("cpu"), "one_nfe")
             data = TinyDataModule()
             data.train_dataset.paths.reverse()
             with self.assertRaisesRegex(ValueError, "manifest"):
@@ -122,6 +151,23 @@ class ResumeTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "belong"):
                 train_mode(arguments(root, resume=str(root / "checkpoints/one_nfe.ckpt")),
                            TinyDataModule(), torch.device("cpu"), "few_nfe")
+
+    def test_pre_hybrid_dit_checkpoint_resumes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            train_mode(arguments(root, max_steps=1, one_objective="flow_matching"), TinyDataModule(), torch.device("cpu"), "one_nfe")
+            state = load(root, "one_nfe")
+            del state["args"]["backbone"]
+            del state["args"]["base_channels"]
+            del state["state_dict"]["_extra_state"]["objective"]
+            del state["objective"]
+            del state["args"]["one_objective"]
+            for name in ("mf_ratio", "mf_time_mean", "mf_time_std", "mf_power", "mf_eps"):
+                del state["args"][name]
+            torch.save(state, root / "checkpoints/one_nfe.ckpt")
+            train_mode(arguments(root, resume="auto", max_steps=2), TinyDataModule(), torch.device("cpu"), "one_nfe")
+            self.assertEqual(load(root, "one_nfe")["step"], 2)
+            self.assertEqual(load(root, "one_nfe")["objective"], "flow_matching")
 
     def test_worker_does_not_inherit_graceful_stop_handlers(self):
         handlers = {sig: signal.getsignal(sig) for sig in (signal.SIGTERM, signal.SIGINT)}

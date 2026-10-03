@@ -219,17 +219,137 @@ in that model's parameter count.
 
 ## Training
 
-The added flow-matching baseline can train both existing implementations:
+The trainer uses MeanFlow for `one_nfe` and flow matching for `few_nfe`:
 
 ```shell
 python train.py --mode both --device cuda --epochs 100 --batch_size 32
 ```
 
-Continue an interrupted run with `python train.py --mode both --device cuda --resume`.
-Training settings and progress are restored from each mode's checkpoint.
+Select the convolutional U-Net with Transformer bottleneck using `--backbone hybrid`:
 
-See [TRAINING.md](TRAINING.md) for configuration, smoke-test instructions,
-output details, and known inconsistencies in the current project.
+```shell
+python train.py --mode both --backbone hybrid --device cuda --epochs 100 --batch_size 32
+```
+
+DiT remains the default. Both backbones use width 640 and eight attention heads:
+
+| Backbone | Transformer blocks | Stem channels | Total parameters |
+| --- | --- | --- | --- |
+| DiT | 13 | — | 98,263,728 |
+| Hybrid | 10 | 160 | 98,227,043 |
+
+These defaults apply to both NFE modes and include all conditioning and output
+layers within the 100M budget. Existing checkpoints retain their saved architecture
+when loaded or resumed; start a fresh run in separate checkpoint/output directories
+to train the larger model. GPU memory at these sizes must be checked on the server;
+reduce `--batch_size` if necessary to stay within the 20GB training limit.
+
+For hybrid, width
+must equal four times `--base_channels`, and stem channels must be a positive
+multiple of 32 for GroupNorm. If omitted, stem channels are inferred from width.
+`--patch_size` applies only to DiT.
+
+Check the hybrid pipeline with a small configuration before a server run:
+
+```shell
+python train.py --mode both --backbone hybrid --width 128 --depth 1 --heads 2 \
+  --device cpu --epochs 1 --max_steps 2 --batch_size 2 --num_workers 0 \
+  --checkpoint_dir /tmp/fastgen-hybrid --output_dir /tmp/fastgen-hybrid-runs
+```
+
+Continue an interrupted run with `python train.py --mode both --device cuda --resume`.
+Training settings, backbone choice, optimizer/scaler/scheduler state, RNG state,
+and progress within an epoch are restored from each mode's checkpoint. No backbone
+flag is needed when resuming. Explicit incompatible architecture settings are
+rejected. Existing DiT resume checkpoints without the new architecture arguments
+remain supported.
+
+Checkpoints save every `--save_every` steps (default 1,000), at epoch ends, and
+on Ctrl+C/SIGTERM. Logs and sample grids go under `runs/<mode>/`. `--max_steps`
+is an absolute stopping boundary and does not change the learning-rate schedule;
+omit it to continue a smoke test. Keep separate checkpoint and output directories
+for fresh DiT and hybrid experiments to preserve their artifacts.
+
+Numbered checkpoints are retained every 10 **completed** epochs, for example
+`checkpoints/one_nfe_epoch_0010.ckpt` and `few_nfe_epoch_0020.ckpt`. They contain
+the full model and resume state. The usual `one_nfe.ckpt`/`few_nfe.ckpt` continue
+to track the latest state. Change the archive cadence with `--checkpoint_every`.
+
+FID checks run every 10 completed epochs and at the end of full training.
+They generate 20 images for each category (3,020 in the official dataset) and
+compare them to all 3,020 validation references using the provided PNG export
+convention and [clean-fid](https://github.com/GaParmar/clean-fid)'s clean Inception
+metric. Validation is used only for this report, with no automatic checkpoint
+selection, early stopping, or training updates based on its score.
+
+Scores and counts are written to `runs/<mode>/fid.jsonl`; sampling uses a fixed
+`--fid_seed 1234`, and training RNG state is restored afterward. References are
+cached with a validation-manifest signature and completeness check, while each
+generated set is temporary and starts empty. The full training checkpoint is
+saved before FID starts. Failed/interrupted checks are logged and retry when
+resuming at that boundary; other FID errors do not stop training. A successful
+check is not repeated for the same saved step and sampling seed.
+
+Controls: `--fid_every 10`, `--fid_batch_size 32`, and `--checkpoint_every 10`.
+`--fid_every 0` disables checks for quick training smoke tests. Partial epochs
+stopped by `--max_steps` do not trigger numbered saves or FID. Inception feature
+weights download on the first check if they are absent; they are used solely
+for evaluation. FID computation uses the training CUDA device, or CPU when
+training on MPS/CPU, and zero feature-loader workers for clean signal handling.
+
+Both architectures support both objectives. Evaluation selects the backbone and
+objective automatically from checkpoint metadata, using the existing `evaluate.py`
+commands below. CUDA training and memory consumption must still be checked on
+the server.
+
+### MeanFlow for one-NFE generation
+
+`one_nfe` trains an average velocity `u(z,r,t)` following
+[Mean Flows for One-step Generative Modeling (Geng et al., 2025)](https://arxiv.org/abs/2505.13447).
+It uses data at `t=0`, noise at `t=1`, input `z=(1-t)*image+t*noise`, and
+instantaneous velocity `v=noise-image`. The network is conditioned on time `t`
+and interval `t-r`. An exact JVP along `(v,0,1)` computes `du/dt`; the regression
+target is `stop_gradient(v-(t-r)*du/dt)`. Sampling uses `noise-u(noise,0,1)`,
+with exactly one backbone evaluation and no auxiliary model or guidance pass.
+
+Time pairs are ordered logit-normal samples. Defaults are `--mf_time_mean -0.4`,
+`--mf_time_std 1`, and `--mf_ratio 0.25` for the proportion of finite intervals;
+the remaining samples have `r=t`. The count is rounded like the reference
+implementation. Detached adaptive weights use per-image mean squared pixel
+error: `(error + mf_eps)^(-mf_power)`, with defaults `--mf_power 1` and
+`--mf_eps 0.001`. Logs include raw `mse` as well as the weighted `loss`, whose
+value can be nearly constant with power 1 even while gradients remain nonzero.
+
+The implementation computes the JVP under `no_grad`, then a separate forward
+for parameter gradients, following the
+[authors' PyTorch implementation guidance](https://github.com/CaptainAmu/py-MeanFlow).
+This avoids higher-order gradients and replays dropout RNG. Math SDPA is used
+for MeanFlow training because fused attention lacks the required forward AD.
+The target-only JVP runs in FP32 to avoid autocast convolution tangent dtype
+mismatches; the gradient-enabled prediction uses the selected training precision.
+On MPS, the JVP uses primitive attention operations because its native math
+attention kernel also lacks forward AD support.
+The few-NFE training/sampler retains its noise-to-data convention and ordinary
+flow-matching objective. No pretrained model, distillation, or CFG is used.
+
+To train only the hybrid MeanFlow model:
+
+```shell
+python train.py --mode one_nfe --backbone hybrid --device cuda --epochs 100
+```
+
+New one-NFE runs default to MeanFlow. Old one-NFE checkpoints without objective
+metadata still load and resume as their original flow-matching baseline;
+resuming does not convert them into MeanFlow. Start a fresh run in a separate
+checkpoint/output directory to change objectives. `--one_objective flow_matching`
+retains the earlier baseline for comparisons. MeanFlow settings are saved and
+restored on resume; incompatible explicit changes are rejected.
+
+Include the paper and the consulted
+[official reference implementation](https://github.com/Gsunshine/meanflow)
+in the project write-up's citations. This implementation adapts their method to
+the supplied 64×64 category-conditioned pixel backbones and uses mean pixel error
+rather than a sum; it is not a reproduction of their published training setup.
 
 Training is part of the student implementation. Students must train both
 NFE-specific models and save two compatible checkpoints:

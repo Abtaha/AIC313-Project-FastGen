@@ -7,11 +7,13 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
+from src.models.attention import scaled_attention
+
 
 @dataclass(frozen=True)
 class DiTConfig:
-    width: int = 512
-    depth: int = 12
+    width: int = 640
+    depth: int = 13
     heads: int = 8
     patch_size: int = 4
     mlp_ratio: float = 4.0
@@ -88,7 +90,7 @@ class Block(nn.Module):
             .permute(2, 0, 3, 1, 4)
             .unbind(0)
         )
-        y = F.scaled_dot_product_attention(
+        y = scaled_attention(
             q, k, v, dropout_p=self.dropout if self.training else 0.0
         )
         y = self.proj(y.transpose(1, 2).reshape(b, n, d))
@@ -108,7 +110,7 @@ class PixelDiT(nn.Module):
         self.position = nn.Parameter(torch.empty(1, (64 // p) ** 2, c.width))
         self.category = nn.Embedding(151, c.width)
         self.time = TimeEmbedding(c.width)
-        # Reserved for interval objectives; standard FM always uses interval=0.
+        # MeanFlow conditions on t-r; standard FM uses interval=0.
         self.interval = TimeEmbedding(c.width)
         self.blocks = nn.ModuleList([Block(c) for _ in range(c.depth)])
         self.final_norm = nn.LayerNorm(c.width, elementwise_affine=False, eps=1e-6)

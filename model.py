@@ -71,17 +71,45 @@ class Model(nn.Module):
         return model.to(device).eval()
 
 
+def build_backbone(config=None):
+    from src.models.dit import PixelDiT
+    from src.models.hybrid import HybridFlowNet
+
+    if config is None:
+        return PixelDiT()
+
+    if isinstance(config, dict):
+        backbone = config.get("backbone", "dit")
+    else:
+        backbone = getattr(config, "backbone", "dit")
+
+    if backbone == "dit":
+        return PixelDiT(config)
+
+    if backbone == "hybrid":
+        return HybridFlowNet(config)
+
+    raise ValueError(f"Unknown backbone: {backbone!r}")
+
+
 class _FlowModel(Model):
     """Shared construction and self-describing state, without changing Model."""
 
-    def __init__(self, device="cpu", config=None, knots=(0.25, 0.5, 0.75)):
-        from src.models.dit import PixelDiT
+    default_objective = "flow_matching"
 
-        super().__init__(PixelDiT(config))
+    def __init__(self, device="cpu", config=None, knots=(0.25, 0.5, 0.75), objective=None):
+        super().__init__(build_backbone(config))
+        self.objective = self._validate_objective(objective or self.default_objective)
         self.knots = self._validate_knots(knots)
-        if self.num_parameters >= 100_000_000:
-            raise ValueError("Model must have strictly fewer than 100M parameters")
+        if self.num_parameters > 100_000_000:
+            raise ValueError("Model must have no more than 100M parameters")
         self.to(device)
+
+    def _validate_objective(self, objective):
+        allowed = ("meanflow", "flow_matching") if self.mode == "one_nfe" else ("flow_matching",)
+        if objective not in allowed:
+            raise ValueError(f"Unsupported objective {objective!r} for {self.mode}")
+        return objective
 
     @staticmethod
     def _validate_knots(knots):
@@ -98,28 +126,31 @@ class _FlowModel(Model):
             "config": self.backbone.architecture_config(),
             "knots": self.knots,
             "mode": self.mode,
+            "objective": self.objective,
         }
 
     def set_extra_state(self, state):
         if state["version"] != 1 or state["mode"] != self.mode:
             raise ValueError("Incompatible checkpoint version or NFE mode")
         self.knots = self._validate_knots(state["knots"])
+        # Existing checkpoints trained with the noise->data FM convention.
+        self.objective = self._validate_objective(state.get("objective", "flow_matching"))
 
     def load_state_dict(self, state_dict, strict=True, assign=False):
         # The fixed loader constructs a default model BEFORE reading the file.
         # Reconstruct the backbone from state metadata, keeping that API intact.
-        from src.models.dit import PixelDiT
-
         metadata = state_dict.get("_extra_state")
         if metadata is None:
             raise ValueError("Missing FastGen architecture metadata in checkpoint")
         self.set_extra_state(metadata)
         if metadata["config"] != self.backbone.architecture_config():
             parameter = next(self.parameters())
-            self.backbone = PixelDiT(metadata["config"]).to(
-                device=parameter.device, dtype=parameter.dtype
+            self.backbone = build_backbone(metadata["config"]).to(
+                device=parameter.device,
+                dtype=parameter.dtype,
             )
-        if self.num_parameters >= 100_000_000:
+
+        if self.num_parameters > 100_000_000:
             raise ValueError("Checkpoint exceeds parameter budget")
         return super().load_state_dict(state_dict, strict=strict, assign=assign)
 
@@ -150,13 +181,17 @@ class _FlowModel(Model):
 
 
 class ModelOneNFE(_FlowModel):
-    """One Euler velocity update; standard FM, not a distilled one-step model."""
+    """One MeanFlow update across [r=0,t=1], with legacy FM checkpoint support."""
 
     mode = "one_nfe"
+    default_objective = "meanflow"
 
     @torch.no_grad()
     def sample(self, shape, *, device="cuda", category=None, generator=None, **kwargs):
         z, category = self._noise(shape, device, category, generator)
+        if self.objective == "meanflow":
+            t = torch.ones(shape[0], device=z.device, dtype=z.dtype)
+            return (z - self.backbone(z, t, category=category, interval=t)).clamp(-1, 1)
         t = torch.zeros(shape[0], device=z.device, dtype=z.dtype)
         return (z + self.backbone(z, t, category=category)).clamp(-1, 1)
 
