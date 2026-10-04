@@ -25,6 +25,7 @@ from dataset import PokemonDataModule
 from model import ModelFewNFE, ModelOneNFE
 from src.models.dit import DiTConfig
 from src.models.hybrid import HybridConfig
+from src.models.hybrid_v2 import HybridV2Config
 from src.meanflow import MEANFLOW_DEFAULTS, meanflow_loss, sample_times
 from src.fid_checks import run_fid_check
 
@@ -191,20 +192,21 @@ def train_mode(args, data, device, mode):
 
     random.seed(args.seed)
     torch.manual_seed(args.seed)
-    if args.backbone == "hybrid":
+    if args.backbone in ("hybrid", "hybrid_v2"):
+        config_class = HybridV2Config if args.backbone == "hybrid_v2" else HybridConfig
         if "patch_size" in args.specified:
             raise ValueError("--patch_size applies only to --backbone dit")
         if args.base_channels is None:
             args.base_channels = args.width // 4
         if not checkpoint and "depth" not in args.specified:
-            args.depth = HybridConfig().depth
-        config = HybridConfig(
+            args.depth = config_class().depth
+        config = config_class(
             width=args.width, depth=args.depth, heads=args.heads,
             base_channels=args.base_channels,
         )
     else:
         if "base_channels" in args.specified:
-            raise ValueError("--base_channels applies only to --backbone hybrid")
+            raise ValueError("--base_channels applies only to hybrid backbones")
         config = DiTConfig(
             width=args.width, depth=args.depth, heads=args.heads,
             patch_size=args.patch_size,
@@ -271,14 +273,29 @@ def train_mode(args, data, device, mode):
     run_dir.mkdir(parents=True, exist_ok=True)
     log_path = run_dir / "train.jsonl"
     fid_log_path = run_dir / "fid.jsonl"
+    best_path = path.with_name(f"{mode}_best.ckpt")
+    best_fid = None
     if checkpoint:
         trim_log(log_path, step)
         trim_log(fid_log_path, step)
+        if checkpoint.get("best_fid_seed") == args.fid_seed:
+            best_fid = checkpoint.get("best_fid")
+        # FID runs after the epoch checkpoint is saved, so the log may contain
+        # a newer best score than the resumed checkpoint's metadata.
+        if fid_log_path.exists():
+            for line in fid_log_path.read_text().splitlines():
+                record = json.loads(line)
+                score = record.get("fid")
+                if (record.get("status") == "ok" and record.get("seed") == args.fid_seed
+                        and score is not None and math.isfinite(score)):
+                    best_fid = score if best_fid is None else min(best_fid, score)
     else:
         fid_log_path.write_text("")
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats(device)
     print(f"{mode}: {args.backbone}, {model.num_parameters:,} parameters, {device}, {precision}")
+    if args.backbone == "hybrid_v2":
+        print(f"Parameter allocation: {model.backbone.parameter_breakdown()}")
     print(f"Objective: {model.objective}")
     started = time.monotonic()
 
@@ -294,6 +311,7 @@ def train_mode(args, data, device, mode):
 
     def check_fid(epoch, source):
         global _FID_ACTIVE
+        nonlocal best_fid
         if not args.fid_every or _STOP_REQUESTED:
             return
         if epoch % args.fid_every != 0 and step != total_steps:
@@ -313,6 +331,21 @@ def train_mode(args, data, device, mode):
             print(f"{mode} epoch {epoch}: checking full validation FID", flush=True)
             record.update(run_fid_check(model, data, run_dir / "fid", batch_size=args.fid_batch_size,
                                         seed=args.fid_seed, worker_init_fn=configure_worker))
+            score = record["fid"]
+            if not math.isfinite(score):
+                raise RuntimeError(f"Non-finite FID score: {score}")
+            if best_fid is None or score < best_fid:
+                # Preserve the complete resume state associated with this FID,
+                # not the model/RNG state temporarily used during evaluation.
+                best_state = torch.load(source, map_location="cpu", weights_only=False, mmap=True)
+                best_state.update(best_fid=score, best_fid_seed=args.fid_seed,
+                                  best_fid_epoch=epoch, best_fid_step=step)
+                temporary = best_path.with_suffix(".ckpt.tmp")
+                torch.save(best_state, temporary)
+                temporary.replace(best_path)
+                best_fid = score
+                record["best_checkpoint"] = str(best_path)
+                print(f"Saved new best checkpoint: {best_path} (FID {score:.4f})")
             record["status"] = "ok"
             print(f"{mode} epoch {epoch} FID: {record['fid']:.4f}")
         except Exception as error:
@@ -362,6 +395,8 @@ def train_mode(args, data, device, mode):
             "rng_state": rng_state(device),
             "elapsed_seconds": elapsed(),
             "peak_cuda_bytes": previous_peak or None,
+            "best_fid": best_fid,
+            "best_fid_seed": args.fid_seed,
         }
         temporary = path.with_suffix(".ckpt.tmp")
         torch.save(state, temporary)
@@ -507,7 +542,7 @@ def parse_args():
     )
     parser.add_argument(
         "--backbone",
-        choices=("dit", "hybrid"),
+        choices=("dit", "hybrid", "hybrid_v2"),
         default="dit",
     )
     parser.add_argument(
@@ -536,7 +571,7 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--width", type=int, default=DiTConfig().width)
     parser.add_argument("--depth", type=int, default=DiTConfig().depth,
-                        help=f"Transformer blocks (default: dit={DiTConfig().depth}, hybrid={HybridConfig().depth})")
+                        help=f"Transformer blocks (default: dit={DiTConfig().depth}, hybrid={HybridConfig().depth}, hybrid_v2={HybridV2Config().depth})")
     parser.add_argument("--base_channels", type=int, help="Hybrid stem channels; defaults to width/4 and must be a multiple of 32")
     parser.add_argument("--heads", type=int, default=8)
     parser.add_argument("--patch_size", type=int, choices=(2, 4, 8), default=4)

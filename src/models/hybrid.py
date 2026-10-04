@@ -27,7 +27,9 @@ class HybridConfig:
     def __post_init__(self):
         if self.backbone != "hybrid":
             raise ValueError("HybridConfig requires backbone='hybrid'")
+        self._validate_dimensions()
 
+    def _validate_dimensions(self):
         if self.width < 4 or self.heads < 1 or self.width % self.heads != 0:
             raise ValueError("width must be positive and divisible by positive heads")
 
@@ -172,11 +174,13 @@ class TransformerBlock(nn.Module):
         heads,
         mlp_ratio=4.0,
         dropout=0.0,
+        rotary=None,
     ):
         super().__init__()
 
         self.heads = heads
         self.dropout = dropout
+        self.rotary = rotary
 
         self.norm1 = nn.LayerNorm(
             width,
@@ -253,6 +257,9 @@ class TransformerBlock(nn.Module):
             .unbind(0)
         )
 
+        if self.rotary is not None:
+            q, k = self.rotary(q, k)
+
         y = scaled_attention(
             q,
             k,
@@ -296,13 +303,22 @@ class HybridFlowNet(nn.Module):
         only at 16×16.
     """
 
+    config_type = HybridConfig
+    encoder_blocks = (2, 2)
+    decoder_blocks = 1
+    learned_position = True
+    add_post_bottleneck = False
+
+    def make_transformer_block(self, config):
+        return TransformerBlock(config.width, config.heads, config.mlp_ratio, config.dropout)
+
     def __init__(self, config=None):
         super().__init__()
 
         self.config = (
             config
-            if isinstance(config, HybridConfig)
-            else HybridConfig(**(config or {}))
+            if isinstance(config, self.config_type)
+            else self.config_type(**(config or {}))
         )
 
         c = self.config
@@ -338,8 +354,7 @@ class HybridFlowNet(nn.Module):
 
         self.enc64 = nn.ModuleList(
             [
-                ResBlock(c1, c1, c3),
-                ResBlock(c1, c1, c3),
+                ResBlock(c1, c1, c3) for _ in range(self.encoder_blocks[0])
             ]
         )
 
@@ -358,8 +373,7 @@ class HybridFlowNet(nn.Module):
 
         self.enc32 = nn.ModuleList(
             [
-                ResBlock(c2, c2, c3),
-                ResBlock(c2, c2, c3),
+                ResBlock(c2, c2, c3) for _ in range(self.encoder_blocks[1])
             ]
         )
 
@@ -383,22 +397,14 @@ class HybridFlowNet(nn.Module):
         )
 
         # 16×16 = exactly 256 transformer tokens.
-        self.position = nn.Parameter(
-            torch.empty(
-                1,
-                16 * 16,
-                c3,
+        if self.learned_position:
+            self.position = nn.Parameter(
+                torch.empty(1, 16 * 16, c3)
             )
-        )
 
         self.transformer = nn.ModuleList(
             [
-                TransformerBlock(
-                    width=c3,
-                    heads=c.heads,
-                    mlp_ratio=c.mlp_ratio,
-                    dropout=c.dropout,
-                )
+                self.make_transformer_block(c)
                 for _ in range(c.depth)
             ]
         )
@@ -407,6 +413,8 @@ class HybridFlowNet(nn.Module):
             c3,
             eps=1e-6,
         )
+        if self.add_post_bottleneck:
+            self.post_bottleneck = ResBlock(c3, c3, c3)
 
         # -------------------------
         # DECODER: 16 -> 32
@@ -425,6 +433,10 @@ class HybridFlowNet(nn.Module):
             c2,
             c3,
         )
+        if self.decoder_blocks > 1:
+            self.dec32 = nn.ModuleList([self.dec32] + [
+                ResBlock(c2, c2, c3) for _ in range(self.decoder_blocks - 1)
+            ])
 
         # -------------------------
         # DECODER: 32 -> 64
@@ -443,6 +455,10 @@ class HybridFlowNet(nn.Module):
             c1,
             c3,
         )
+        if self.decoder_blocks > 1:
+            self.dec64 = nn.ModuleList([self.dec64] + [
+                ResBlock(c1, c1, c3) for _ in range(self.decoder_blocks - 1)
+            ])
 
         self.output_norm = nn.GroupNorm(
             32,
@@ -458,10 +474,8 @@ class HybridFlowNet(nn.Module):
 
         self.apply(self._init)
 
-        nn.init.normal_(
-            self.position,
-            std=0.02,
-        )
+        if self.learned_position:
+            nn.init.normal_(self.position, std=0.02)
 
         nn.init.normal_(
             self.category.weight,
@@ -566,7 +580,8 @@ class HybridFlowNet(nn.Module):
         # Convert feature map to tokens.
         tokens = h16.flatten(2).transpose(1, 2)
 
-        tokens = tokens + self.position
+        if self.learned_position:
+            tokens = tokens + self.position
 
         for block in self.transformer:
             tokens = block(
@@ -583,6 +598,8 @@ class HybridFlowNet(nn.Module):
             16,
             16,
         )
+        if self.add_post_bottleneck:
+            h16 = self.post_bottleneck(h16, condition)
 
         # =========================
         # 32 × 32 decoder
@@ -601,10 +618,8 @@ class HybridFlowNet(nn.Module):
             dim=1,
         )
 
-        h = self.dec32(
-            h,
-            condition,
-        )
+        for block in self.dec32 if isinstance(self.dec32, nn.ModuleList) else (self.dec32,):
+            h = block(h, condition)
 
         # =========================
         # 64 × 64 decoder
@@ -623,10 +638,8 @@ class HybridFlowNet(nn.Module):
             dim=1,
         )
 
-        h = self.dec64(
-            h,
-            condition,
-        )
+        for block in self.dec64 if isinstance(self.dec64, nn.ModuleList) else (self.dec64,):
+            h = block(h, condition)
 
         h = self.output_norm(h)
         h = F.silu(h)

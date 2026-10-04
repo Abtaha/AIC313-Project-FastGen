@@ -80,6 +80,45 @@ class FIDTests(unittest.TestCase):
                 evaluate.assert_not_called()
             self.assertFalse((root / "checkpoints/few_nfe_epoch_0010.ckpt").exists())
 
+    def test_best_checkpoint_tracks_fid_and_survives_resume(self):
+        for mode in ("one_nfe", "few_nfe"):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                args = arguments(root, epochs=4, max_steps=6, fid_every=1)
+                with patch("train.run_fid_check", side_effect=[
+                    {"fid": 20., "seed": 1234}, {"fid": 10., "seed": 1234}
+                ]):
+                    train_mode(args, TinyDataModule(), torch.device("cpu"), mode)
+                best_path = root / "checkpoints" / f"{mode}_best.ckpt"
+                best = torch.load(best_path, weights_only=False)
+                self.assertEqual((best["best_fid"], best["epoch"], best["step"]), (10., 2, 6))
+                self.assertIn("optimizer", best)
+                self.assertIn("rng_state", best)
+                # The latest checkpoint predates the second FID; its saved best
+                # is 20. Resume must recover 10 from the successful FID log.
+                self.assertEqual(load(root, mode)["best_fid"], 20.)
+                before = best_path.stat().st_mtime_ns
+                with patch("train.run_fid_check", side_effect=[
+                    {"fid": 15., "seed": 1234}, {"fid": 10., "seed": 1234}
+                ]) as metric:
+                    train_mode(arguments(root, resume="auto", max_steps=12),
+                               TinyDataModule(), torch.device("cpu"), mode)
+                    self.assertEqual(metric.call_count, 2)
+                self.assertEqual(best_path.stat().st_mtime_ns, before)
+                self.assertEqual(load(root, mode)["best_fid"], 10.)
+                loaded = Model.load_checkpoint(str(best_path), evaluate_mode=mode)
+                self.assertEqual(loaded.objective, best["objective"])
+
+    def test_failed_fid_does_not_create_best_checkpoint(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with patch("train.run_fid_check", return_value={"fid": float("nan"), "seed": 1234}):
+                train_mode(arguments(root, epochs=1, fid_every=1),
+                           TinyDataModule(), torch.device("cpu"), "few_nfe")
+            self.assertFalse((root / "checkpoints/few_nfe_best.ckpt").exists())
+            record = json.loads((root / "runs/few_nfe/fid.jsonl").read_text())
+            self.assertEqual(record["status"], "error")
+
     def test_fid_failure_keeps_checkpoint_and_retries_on_resume(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

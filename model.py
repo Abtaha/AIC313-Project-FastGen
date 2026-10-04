@@ -74,6 +74,7 @@ class Model(nn.Module):
 def build_backbone(config=None):
     from src.models.dit import PixelDiT
     from src.models.hybrid import HybridFlowNet
+    from src.models.hybrid_v2 import HybridV2FlowNet
 
     if config is None:
         return PixelDiT()
@@ -88,6 +89,9 @@ def build_backbone(config=None):
 
     if backbone == "hybrid":
         return HybridFlowNet(config)
+
+    if backbone == "hybrid_v2":
+        return HybridV2FlowNet(config)
 
     raise ValueError(f"Unknown backbone: {backbone!r}")
 

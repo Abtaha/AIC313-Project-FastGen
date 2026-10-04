@@ -231,12 +231,28 @@ Select the convolutional U-Net with Transformer bottleneck using `--backbone hyb
 python train.py --mode both --backbone hybrid --device cuda --epochs 100 --batch_size 32
 ```
 
-DiT remains the default. Both backbones use width 640 and eight attention heads:
+DiT remains the default. All three backbones use width 640 and eight attention heads:
 
 | Backbone | Transformer blocks | Stem channels | Total parameters |
 | --- | --- | --- | --- |
 | DiT | 13 | — | 98,263,728 |
 | Hybrid | 10 | 160 | 98,227,043 |
+| Hybrid-v2 | 8 | 160 | 99,595,363 |
+
+Hybrid-v2 reallocates Transformer capacity into the convolutional path. Select
+`--backbone hybrid_v2` for a fresh experiment; checkpoint metadata preserves this
+selection during evaluation and resume. For the controlled few-NFE FM comparison:
+
+```shell
+python train.py --mode few_nfe --backbone hybrid_v2 --device cuda --epochs 100 --batch_size 32 \
+  --checkpoint_dir checkpoints/hybrid_v2 --output_dir runs/hybrid_v2
+```
+
+It keeps the existing noise-to-data FM loss, four-step Euler sampler, optimizer,
+learning rate, uniform FM timestep sampling, `*1000` timestep scale, class
+conditioning, preprocessing, and FID pipeline. Both existing NFE objectives remain
+available without changes to MeanFlow. See [the exact architecture and parameter
+allocation](hybrid_v2_architecture.md) for the budget adjustment and validation.
 
 These defaults apply to both NFE modes and include all conditioning and output
 layers within the 100M budget. Existing checkpoints retain their saved architecture
@@ -281,6 +297,13 @@ compare them to all 3,020 validation references using the provided PNG export
 convention and [clean-fid](https://github.com/GaParmar/clean-fid)'s clean Inception
 metric. Validation is used only for this report, with no automatic checkpoint
 selection, early stopping, or training updates based on its score.
+
+Each successful FID improvement atomically saves `checkpoints/<mode>_best.ckpt`
+(under the configured checkpoint directory). This is a complete resume checkpoint
+with the best FID, evaluation seed, epoch, and step recorded in its metadata.
+Tied, worse, failed, or non-finite scores do not replace it. Resume restores the
+best score from checkpoint metadata and successful FID logs for the same seed.
+With `--fid_every 0`, no best checkpoint is created.
 
 Scores and counts are written to `runs/<mode>/fid.jsonl`; sampling uses a fixed
 `--fid_seed 1234`, and training RNG state is restored afterward. References are
