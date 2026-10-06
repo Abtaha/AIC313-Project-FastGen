@@ -1,0 +1,842 @@
+Loading: checkpoints/hybrid_v2/few_nfe_best.ckpt
+File size: 1140.07 MiB
+State dict source: state_dict
+
+==========================================================================================
+CHECKPOINT METADATA
+==========================================================================================
+Top-level keys:
+  resume_version                 1
+  state_dict                     dict (242 keys)
+  optimizer                      dict (2 keys)
+  scheduler                      dict (8 keys)
+  scaler                         dict (0 keys)
+  epoch                          90
+  batch_in_epoch                 533
+  step                           47970
+  epoch_loss_sum                 2218.3729798793793
+  epoch_image_count              17056
+  total_steps                    53300
+  precision                      'bf16'
+  objective                      'flow_matching'
+  category_to_id                 dict (151 keys)
+  data_signature                 'e89ea523d068d80a202022626601ede930f12d2facf53b310a05d2282461074c'
+  args                           dict (36 keys)
+  rng_state                      dict (3 keys)
+  elapsed_seconds                8360.345229377039
+  peak_cuda_bytes                9014794752
+  best_fid                       139.98606726715292
+  best_fid_seed                  1234
+  best_fid_epoch                 90
+  best_fid_step                  47970
+
+Likely training metadata:
+  epoch               : 90
+  step                : 47970
+  batch_in_epoch      : 533
+  total_steps         : 53300
+  best_fid            : 139.98606726715292
+  best_fid_seed       : 1234
+  best_fid_epoch      : 90
+  best_fid_step       : 47970
+  objective           : flow_matching
+  precision           : bf16
+  elapsed_seconds     : 8360.345229377039
+  peak_cuda_bytes     : 9014794752
+
+Saved training arguments:
+  backbone            : hybrid_v2
+  mode                : both
+  epochs              : 100
+  batch_size          : 32
+  lr                  : 0.0001
+  weight_decay        : 0.01
+  seed                : 42
+  width               : 640
+  depth               : 8
+  heads               : 8
+  base_channels       : 160
+  knots               : (0.25, 0.5, 0.75)
+  grad_clip           : 1.0
+  fid_every           : 10
+  fid_batch_size      : 32
+  fid_seed            : 1234
+
+Optimizer:
+  group 0: lr=2.4471741852422437e-06 weight_decay=0.01 betas=(0.9, 0.999)
+
+==========================================================================================
+MODEL STATE
+==========================================================================================
+Tensor entries:   241
+Parameters/items: 99,595,619 (99.596M)
+Tensor storage:   379.93 MiB
+
+Non-finite check:
+  ✓ No NaN/Inf values found
+
+==========================================================================================
+PARAMETER BREAKDOWN
+==========================================================================================
+group                          params          RMS      zero%
+-----------------------------------------------------------------
+transformer                   59.059M     0.024933     0.000%
+bottleneck                     8.197M    0.0228048     0.000%
+post_bottleneck                8.197M    0.0222689     0.000%
+dec32                          7.893M     0.029954     0.000%
+enc32                          6.766M    0.0301304     0.000%
+dec64                          2.283M    0.0403316     0.000%
+down32                         1.844M    0.0253903     0.000%
+up32_conv                      1.844M    0.0198118     0.000%
+enc64                          1.334M    0.0390034     0.000%
+time                         574.848K    0.0399143     0.000%
+interval                     574.848K    0.0391702     0.000%
+down64                       461.120K    0.0335686     0.000%
+up64_conv                    460.960K     0.024608     0.000%
+category                      96.640K    0.0437504     0.000%
+stem                           4.480K     0.110855     0.000%
+output                         4.323K    0.0141655     0.000%
+transformer_norm               1.280K     0.670493     0.000%
+output_norm                       320     0.684718     0.000%
+
+==========================================================================================
+adaLN-ZERO TRANSFORMER DIAGNOSTICS
+==========================================================================================
+
+Transformer block 0
+  modulation weight: backbone.transformer.0.modulation.1.weight
+  shape: (3840, 640)
+    shift1 : RMS=0.009115  |mean|=0.006838  zero=0.00%
+    scale1 : RMS=0.014736  |mean|=0.011300  zero=0.00%
+    gate1  : RMS=0.013318  |mean|=0.010274  zero=0.00%
+    shift2 : RMS=0.009287  |mean|=0.007153  zero=0.00%
+    scale2 : RMS=0.015794  |mean|=0.012595  zero=0.00%
+    gate2  : RMS=0.012619  |mean|=0.009919  zero=0.00%
+  modulation bias:
+    shift1 : RMS=0.004634  |mean|=0.003474
+    scale1 : RMS=0.008854  |mean|=0.006989
+    gate1  : RMS=0.011872  |mean|=0.008853
+    shift2 : RMS=0.007789  |mean|=0.005867
+    scale2 : RMS=0.012904  |mean|=0.010457
+    gate2  : RMS=0.008462  |mean|=0.006759
+
+Transformer block 1
+  modulation weight: backbone.transformer.1.modulation.1.weight
+  shape: (3840, 640)
+    shift1 : RMS=0.007968  |mean|=0.005988  zero=0.00%
+    scale1 : RMS=0.013621  |mean|=0.010518  zero=0.00%
+    gate1  : RMS=0.011268  |mean|=0.008525  zero=0.00%
+    shift2 : RMS=0.009106  |mean|=0.006973  zero=0.00%
+    scale2 : RMS=0.016785  |mean|=0.013374  zero=0.00%
+    gate2  : RMS=0.014598  |mean|=0.011805  zero=0.00%
+  modulation bias:
+    shift1 : RMS=0.003856  |mean|=0.002900
+    scale1 : RMS=0.008302  |mean|=0.006581
+    gate1  : RMS=0.007270  |mean|=0.005219
+    shift2 : RMS=0.006813  |mean|=0.005145
+    scale2 : RMS=0.014742  |mean|=0.011811
+    gate2  : RMS=0.010797  |mean|=0.009057
+
+Transformer block 2
+  modulation weight: backbone.transformer.2.modulation.1.weight
+  shape: (3840, 640)
+    shift1 : RMS=0.008876  |mean|=0.006589  zero=0.00%
+    scale1 : RMS=0.012962  |mean|=0.010037  zero=0.00%
+    gate1  : RMS=0.014370  |mean|=0.011197  zero=0.00%
+    shift2 : RMS=0.009013  |mean|=0.006848  zero=0.00%
+    scale2 : RMS=0.016104  |mean|=0.012938  zero=0.00%
+    gate2  : RMS=0.014332  |mean|=0.011559  zero=0.00%
+  modulation bias:
+    shift1 : RMS=0.004344  |mean|=0.003256
+    scale1 : RMS=0.008710  |mean|=0.006797
+    gate1  : RMS=0.013087  |mean|=0.009958
+    shift2 : RMS=0.006778  |mean|=0.005028
+    scale2 : RMS=0.014753  |mean|=0.012016
+    gate2  : RMS=0.010056  |mean|=0.008418
+
+Transformer block 3
+  modulation weight: backbone.transformer.3.modulation.1.weight
+  shape: (3840, 640)
+    shift1 : RMS=0.008760  |mean|=0.006597  zero=0.00%
+    scale1 : RMS=0.012725  |mean|=0.009995  zero=0.00%
+    gate1  : RMS=0.015572  |mean|=0.012397  zero=0.00%
+    shift2 : RMS=0.008504  |mean|=0.006438  zero=0.00%
+    scale2 : RMS=0.016494  |mean|=0.013404  zero=0.00%
+    gate2  : RMS=0.015302  |mean|=0.012417  zero=0.00%
+  modulation bias:
+    shift1 : RMS=0.005314  |mean|=0.004031
+    scale1 : RMS=0.009802  |mean|=0.007724
+    gate1  : RMS=0.014637  |mean|=0.011706
+    shift2 : RMS=0.006229  |mean|=0.004546
+    scale2 : RMS=0.014848  |mean|=0.012420
+    gate2  : RMS=0.011463  |mean|=0.009724
+
+Transformer block 4
+  modulation weight: backbone.transformer.4.modulation.1.weight
+  shape: (3840, 640)
+    shift1 : RMS=0.007609  |mean|=0.005680  zero=0.00%
+    scale1 : RMS=0.011848  |mean|=0.009215  zero=0.00%
+    gate1  : RMS=0.015371  |mean|=0.012148  zero=0.00%
+    shift2 : RMS=0.008748  |mean|=0.006721  zero=0.00%
+    scale2 : RMS=0.018046  |mean|=0.014798  zero=0.00%
+    gate2  : RMS=0.019322  |mean|=0.015914  zero=0.00%
+  modulation bias:
+    shift1 : RMS=0.004133  |mean|=0.003066
+    scale1 : RMS=0.008389  |mean|=0.006466
+    gate1  : RMS=0.012311  |mean|=0.009736
+    shift2 : RMS=0.006776  |mean|=0.005271
+    scale2 : RMS=0.019048  |mean|=0.016320
+    gate2  : RMS=0.016132  |mean|=0.013724
+
+Transformer block 5
+  modulation weight: backbone.transformer.5.modulation.1.weight
+  shape: (3840, 640)
+    shift1 : RMS=0.007706  |mean|=0.005855  zero=0.00%
+    scale1 : RMS=0.012222  |mean|=0.009612  zero=0.00%
+    gate1  : RMS=0.013846  |mean|=0.011027  zero=0.00%
+    shift2 : RMS=0.008910  |mean|=0.006871  zero=0.00%
+    scale2 : RMS=0.019101  |mean|=0.015767  zero=0.00%
+    gate2  : RMS=0.019504  |mean|=0.015933  zero=0.00%
+  modulation bias:
+    shift1 : RMS=0.004277  |mean|=0.003368
+    scale1 : RMS=0.009723  |mean|=0.007765
+    gate1  : RMS=0.009962  |mean|=0.008081
+    shift2 : RMS=0.006151  |mean|=0.004757
+    scale2 : RMS=0.022578  |mean|=0.019901
+    gate2  : RMS=0.014404  |mean|=0.012395
+
+Transformer block 6
+  modulation weight: backbone.transformer.6.modulation.1.weight
+  shape: (3840, 640)
+    shift1 : RMS=0.008179  |mean|=0.006317  zero=0.00%
+    scale1 : RMS=0.013353  |mean|=0.010531  zero=0.00%
+    gate1  : RMS=0.012486  |mean|=0.009784  zero=0.00%
+    shift2 : RMS=0.006437  |mean|=0.005044  zero=0.00%
+    scale2 : RMS=0.010718  |mean|=0.008489  zero=0.00%
+    gate2  : RMS=0.005010  |mean|=0.003418  zero=0.00%
+  modulation bias:
+    shift1 : RMS=0.006795  |mean|=0.005085
+    scale1 : RMS=0.012268  |mean|=0.009701
+    gate1  : RMS=0.008840  |mean|=0.006857
+    shift2 : RMS=0.009793  |mean|=0.007963
+    scale2 : RMS=0.013824  |mean|=0.011285
+    gate2  : RMS=0.001472  |mean|=0.000536
+
+Transformer block 7
+  modulation weight: backbone.transformer.7.modulation.1.weight
+  shape: (3840, 640)
+    shift1 : RMS=0.008154  |mean|=0.006179  zero=0.00%
+    scale1 : RMS=0.015968  |mean|=0.012796  zero=0.00%
+    gate1  : RMS=0.013773  |mean|=0.011081  zero=0.00%
+    shift2 : RMS=0.009879  |mean|=0.007779  zero=0.00%
+    scale2 : RMS=0.011589  |mean|=0.009148  zero=0.00%
+    gate2  : RMS=0.004200  |mean|=0.002887  zero=0.00%
+  modulation bias:
+    shift1 : RMS=0.004838  |mean|=0.003832
+    scale1 : RMS=0.017782  |mean|=0.014678
+    gate1  : RMS=0.011731  |mean|=0.009674
+    shift2 : RMS=0.016311  |mean|=0.014063
+    scale2 : RMS=0.015933  |mean|=0.012892
+    gate2  : RMS=0.001770  |mean|=0.000404
+
+Found 8 Transformer blocks.
+
+==========================================================================================
+FORWARD-PASS DIAGNOSTIC
+==========================================================================================
+Outer checkpoint entries: 242
+Extracted backbone entries: 241
+
+Recovered architecture config:
+  width               : 640
+  depth               : 8
+  heads               : 8
+  mlp_ratio           : 4.0
+  dropout             : 0.0
+  base_channels       : 160
+  backbone            : hybrid_v2
+
+Missing keys:    0
+Unexpected keys: 0
+
+LOAD VERIFICATION
+------------------------------------------------------------------------------------------
+output.weight                                    exact=True  max_error=0
+category.weight                                  exact=True  max_error=0
+transformer.0.modulation.1.weight                exact=True  max_error=0
+transformer.7.modulation.1.weight                exact=True  max_error=0
+
+✓ Trained Hybrid v2 backbone loaded successfully.
+
+==========================================================================================
+FORWARD SUMMARY
+==========================================================================================
+Input RMS:              0.999834
+Predicted velocity RMS: 1.052696
+Velocity abs mean:      0.841150
+Velocity max abs:       4.517103
+
+==========================================================================================
+TRANSFORMER BLOCK ACTIVITY
+==========================================================================================
+blk     in RMS    out RMS      Δ RMS       Δ/in       cos      gate1      gate2
+------------------------------------------------------------------------------------------
+  0     3.2131     4.1308     3.0604     95.25%    0.7267     0.8932     0.8742
+  1     4.1308     4.7080     2.2218     53.79%    0.8965     0.6411     1.0796
+  2     4.7080     5.1801     2.2708     48.23%    0.9107     1.0495     1.0754
+  3     5.1801     5.7081     2.5480     49.19%    0.9061     1.1872     1.2028
+  4     5.7081     6.5858     3.0670     53.73%    0.8953     1.2501     1.5935
+  5     6.5858     8.1505     3.5958     54.60%    0.9100     1.0024     1.6290
+  6     8.1505    10.6406     5.1249     62.88%    0.8844     0.7918     0.0935
+  7    10.6406    23.6469    15.5790    146.41%    0.8687     0.9606     0.0990
+
+==========================================================================================
+DETAILED BLOCK DIAGNOSTICS
+==========================================================================================
+
+Transformer block 0
+  input RMS:           3.213096
+  output RMS:          4.130752
+  residual Δ RMS:      3.060420
+  Δ / input:           95.248%
+  input/output cosine: 0.726722
+  gate1 RMS:           0.893223
+  gate2 RMS:           0.874244
+  gate1 |mean|:        0.687276
+  gate2 |mean|:        0.707537
+  scale1 RMS:          0.936586
+  scale2 RMS:          1.106125
+  shift1 RMS:          0.412602
+  shift2 RMS:          0.494735
+  QKV input RMS:       1.222528
+  QKV output RMS:      1.440469
+  MLP input RMS:       1.572571
+  MLP output RMS:      1.501317
+
+Transformer block 1
+  input RMS:           4.130752
+  output RMS:          4.707953
+  residual Δ RMS:      2.221767
+  Δ / input:           53.786%
+  input/output cosine: 0.896474
+  gate1 RMS:           0.641143
+  gate2 RMS:           1.079598
+  gate1 |mean|:        0.460823
+  gate2 |mean|:        0.913013
+  scale1 RMS:          0.773393
+  scale2 RMS:          1.219077
+  shift1 RMS:          0.313918
+  shift2 RMS:          0.436113
+  QKV input RMS:       1.270481
+  QKV output RMS:      1.335837
+  MLP input RMS:       1.658595
+  MLP output RMS:      1.199982
+
+Transformer block 2
+  input RMS:           4.707953
+  output RMS:          5.180118
+  residual Δ RMS:      2.270825
+  Δ / input:           48.234%
+  input/output cosine: 0.910651
+  gate1 RMS:           1.049465
+  gate2 RMS:           1.075442
+  gate1 |mean|:        0.803005
+  gate2 |mean|:        0.912852
+  scale1 RMS:          0.762422
+  scale2 RMS:          1.185679
+  shift1 RMS:          0.312986
+  shift2 RMS:          0.432238
+  QKV input RMS:       1.231300
+  QKV output RMS:      1.299026
+  MLP input RMS:       1.657795
+  MLP output RMS:      1.187550
+
+Transformer block 3
+  input RMS:           5.180118
+  output RMS:          5.708069
+  residual Δ RMS:      2.548028
+  Δ / input:           49.189%
+  input/output cosine: 0.906079
+  gate1 RMS:           1.187219
+  gate2 RMS:           1.202823
+  gate1 |mean|:        0.959741
+  gate2 |mean|:        1.017802
+  scale1 RMS:          0.744203
+  scale2 RMS:          1.219577
+  shift1 RMS:          0.271897
+  shift2 RMS:          0.406826
+  QKV input RMS:       1.240022
+  QKV output RMS:      1.292131
+  MLP input RMS:       1.765823
+  MLP output RMS:      1.223431
+
+Transformer block 4
+  input RMS:           5.708069
+  output RMS:          6.585841
+  residual Δ RMS:      3.067026
+  Δ / input:           53.731%
+  input/output cosine: 0.895254
+  gate1 RMS:           1.250137
+  gate2 RMS:           1.593502
+  gate1 |mean|:        1.004536
+  gate2 |mean|:        1.354424
+  scale1 RMS:          0.637041
+  scale2 RMS:          1.467773
+  shift1 RMS:          0.246787
+  shift2 RMS:          0.432992
+  QKV input RMS:       1.165593
+  QKV output RMS:      1.188630
+  MLP input RMS:       2.090700
+  MLP output RMS:      1.265337
+
+Transformer block 5
+  input RMS:           6.585841
+  output RMS:          8.150518
+  residual Δ RMS:      3.595754
+  Δ / input:           54.598%
+  input/output cosine: 0.909991
+  gate1 RMS:           1.002423
+  gate2 RMS:           1.628977
+  gate1 |mean|:        0.825635
+  gate2 |mean|:        1.357764
+  scale1 RMS:          0.689115
+  scale2 RMS:          1.678123
+  shift1 RMS:          0.238217
+  shift2 RMS:          0.466237
+  QKV input RMS:       1.336950
+  QKV output RMS:      1.285749
+  MLP input RMS:       2.325821
+  MLP output RMS:      1.635516
+
+Transformer block 6
+  input RMS:           8.150518
+  output RMS:          10.640625
+  residual Δ RMS:      5.124867
+  Δ / input:           62.878%
+  input/output cosine: 0.884427
+  gate1 RMS:           0.791768
+  gate2 RMS:           0.093513
+  gate1 |mean|:        0.638707
+  gate2 |mean|:        0.034248
+  scale1 RMS:          0.823898
+  scale2 RMS:          0.764934
+  shift1 RMS:          0.292461
+  shift2 RMS:          0.435164
+  QKV input RMS:       1.402969
+  QKV output RMS:      1.351115
+  MLP input RMS:       1.239592
+  MLP output RMS:      2.772185
+
+Transformer block 7
+  input RMS:           10.640625
+  output RMS:          23.646917
+  residual Δ RMS:      15.578969
+  Δ / input:           146.410%
+  input/output cosine: 0.868688
+  gate1 RMS:           0.960569
+  gate2 RMS:           0.099044
+  gate1 |mean|:        0.800769
+  gate2 |mean|:        0.018836
+  scale1 RMS:          1.165366
+  scale2 RMS:          0.823487
+  shift1 RMS:          0.258144
+  shift2 RMS:          0.665427
+  QKV input RMS:       1.438074
+  QKV output RMS:      1.379650
+  MLP input RMS:       1.614087
+  MLP output RMS:      8.707303
+
+==========================================================================================
+DEPTH ACCUMULATION
+==========================================================================================
+RMS entering block 0: 3.213096
+RMS leaving block 7: 23.646917
+Total RMS ratio:       7.3595x
+Mean per-block Δ/input: 70.509%
+Strongest block:       7 (146.410%)
+Mildest block:         2 (48.234%)
+
+Interpretation:
+
+For comparison, Hybrid v3 gave approximately:
+
+    block 0: Δ/input = 127.5%
+    block 1: Δ/input = 341.5%
+
+Hybrid v2 has eight 16x16 Transformer blocks. We want to determine
+whether it performs a sequence of smaller refinements instead of the
+two enormous representation rewrites seen in Hybrid v3.
+
+Very rough guide:
+
+    < 5%       very mild refinement
+    5-20%      moderate contribution
+    20-50%     strong contribution
+    50-100%    very strong rewrite
+    > 100%     residual change exceeds the input RMS
+
+Do not interpret these synthetic-probe values as FID. They are only
+architectural diagnostics.
+
+
+==========================================================================================
+ATTENTION / MLP RESIDUAL CONTRIBUTIONS
+==========================================================================================
+
+blk     input    attn Δ   attn/in     MLP Δ    MLP/in   total Δ  total/in   A·M cos
+------------------------------------------------------------------------------------------
+  0    3.2131    2.5250    78.59%    1.7563    54.66%    3.0604    95.25%    0.0332
+  1    4.1308    1.6873    40.85%    1.5305    37.05%    2.2218    53.79%    0.0034
+  2    4.7080    1.8631    39.57%    1.4644    31.10%    2.2708    48.23%   -0.0756
+  3    5.1801    1.9581    37.80%    1.7367    33.53%    2.5480    49.19%   -0.0203
+  4    5.7081    2.0252    35.48%    2.2294    39.06%    3.0670    53.73%    0.0141
+  5    6.5858    1.8845    28.61%    2.9848    45.32%    3.5958    54.60%    0.0452
+  6    8.1505    1.4965    18.36%    4.3663    53.57%    5.1249    62.88%    0.4009
+  7   10.6406    1.6905    15.89%   15.4270   144.98%   15.5790   146.41%    0.0792
+
+==========================================================================================
+DETAILED BRANCH DIAGNOSTICS
+==========================================================================================
+
+Transformer block 0
+  input RMS:                  3.213096
+  raw attention output RMS:   2.101852
+  gate1 RMS:                  0.893223
+  attention residual RMS:     2.525035
+  attention Δ / input:        78.586%
+  raw MLP output RMS:         1.501317
+  gate2 RMS:                  0.874244
+  MLP residual RMS:           1.756302
+  MLP Δ / input:              54.661%
+  total block Δ RMS:          3.060420
+  total Δ / input:            95.248%
+  attention/MLP cosine:       0.033178
+  attention/total Δ cosine:   0.861987
+  MLP/total Δ cosine:         0.524903
+  reconstruction max error:   3.815e-06
+  reconstruction relative RMS: 0.000006%
+
+Transformer block 1
+  input RMS:                  4.130752
+  raw attention output RMS:   1.678537
+  gate1 RMS:                  0.641143
+  attention residual RMS:     1.687330
+  attention Δ / input:        40.848%
+  raw MLP output RMS:         1.199982
+  gate2 RMS:                  1.079598
+  MLP residual RMS:           1.530513
+  MLP Δ / input:              37.052%
+  total block Δ RMS:          2.221767
+  total Δ / input:            53.786%
+  attention/MLP cosine:       0.003354
+  attention/total Δ cosine:   0.772046
+  MLP/total Δ cosine:         0.627061
+  reconstruction max error:   7.629e-06
+  reconstruction relative RMS: 0.000008%
+
+Transformer block 2
+  input RMS:                  4.707953
+  raw attention output RMS:   1.377589
+  gate1 RMS:                  1.049465
+  attention residual RMS:     1.863116
+  attention Δ / input:        39.574%
+  raw MLP output RMS:         1.187550
+  gate2 RMS:                  1.075442
+  MLP residual RMS:           1.464371
+  MLP Δ / input:              31.104%
+  total block Δ RMS:          2.270825
+  total Δ / input:            48.234%
+  attention/MLP cosine:       -0.075630
+  attention/total Δ cosine:   0.772989
+  MLP/total Δ cosine:         0.571783
+  reconstruction max error:   5.722e-06
+  reconstruction relative RMS: 0.000009%
+
+Transformer block 3
+  input RMS:                  5.180118
+  raw attention output RMS:   1.356800
+  gate1 RMS:                  1.187219
+  attention residual RMS:     1.958130
+  attention Δ / input:        37.801%
+  raw MLP output RMS:         1.223431
+  gate2 RMS:                  1.202823
+  MLP residual RMS:           1.736718
+  MLP Δ / input:              33.527%
+  total block Δ RMS:          2.548028
+  total Δ / input:            49.189%
+  attention/MLP cosine:       -0.020267
+  attention/total Δ cosine:   0.756887
+  MLP/total Δ cosine:         0.632845
+  reconstruction max error:   5.484e-06
+  reconstruction relative RMS: 0.000009%
+
+Transformer block 4
+  input RMS:                  5.708069
+  raw attention output RMS:   1.293509
+  gate1 RMS:                  1.250137
+  attention residual RMS:     2.025196
+  attention Δ / input:        35.480%
+  raw MLP output RMS:         1.265337
+  gate2 RMS:                  1.593502
+  MLP residual RMS:           2.229387
+  MLP Δ / input:              39.057%
+  total block Δ RMS:          3.067026
+  total Δ / input:            53.731%
+  attention/MLP cosine:       0.014130
+  attention/total Δ cosine:   0.681277
+  MLP/total Δ cosine:         0.740922
+  reconstruction max error:   4.768e-06
+  reconstruction relative RMS: 0.000008%
+
+Transformer block 5
+  input RMS:                  6.585841
+  raw attention output RMS:   1.471405
+  gate1 RMS:                  1.002423
+  attention residual RMS:     1.884513
+  attention Δ / input:        28.615%
+  raw MLP output RMS:         1.635516
+  gate2 RMS:                  1.628977
+  MLP residual RMS:           2.984789
+  MLP Δ / input:              45.321%
+  total block Δ RMS:          3.595754
+  total Δ / input:            54.598%
+  attention/MLP cosine:       0.045198
+  attention/total Δ cosine:   0.604569
+  MLP/total Δ cosine:         0.818695
+  reconstruction max error:   7.629e-06
+  reconstruction relative RMS: 0.000008%
+
+Transformer block 6
+  input RMS:                  8.150518
+  raw attention output RMS:   1.521764
+  gate1 RMS:                  0.791768
+  attention residual RMS:     1.496482
+  attention Δ / input:        18.361%
+  raw MLP output RMS:         2.772185
+  gate2 RMS:                  0.093513
+  MLP residual RMS:           4.366336
+  MLP Δ / input:              53.571%
+  total block Δ RMS:          5.124867
+  total Δ / input:            62.878%
+  attention/MLP cosine:       0.400866
+  attention/total Δ cosine:   0.641353
+  MLP/total Δ cosine:         0.958890
+  reconstruction max error:   1.526e-05
+  reconstruction relative RMS: 0.000008%
+
+Transformer block 7
+  input RMS:                  10.640625
+  raw attention output RMS:   1.485745
+  gate1 RMS:                  0.960569
+  attention residual RMS:     1.690478
+  attention Δ / input:        15.887%
+  raw MLP output RMS:         8.707303
+  gate2 RMS:                  0.099044
+  MLP residual RMS:           15.427033
+  MLP Δ / input:              144.982%
+  total block Δ RMS:          15.578969
+  total Δ / input:            146.410%
+  attention/MLP cosine:       0.079154
+  attention/total Δ cosine:   0.183553
+  MLP/total Δ cosine:         0.993350
+  reconstruction max error:   6.104e-05
+  reconstruction relative RMS: 0.000006%
+
+==========================================================================================
+BRANCH SUMMARY
+==========================================================================================
+Strongest attention branch: block 0 (78.586% of input RMS)
+Strongest MLP branch:       block 7 (144.982% of input RMS)
+
+A·M cosine interpretation:
+  > 0  attention and MLP residuals reinforce each other
+  ~ 0  branches modify mostly independent directions
+  < 0  branches partially cancel each other
+
+Worst residual reconstruction error: block 2 = 0.000009%
+✓ attention Δ + MLP Δ exactly reconstructs the measured block residual.
+
+====================================================================================================
+CHANNEL-WISE MLP / GATE PATHOLOGY
+====================================================================================================
+
+====================================================================================================
+TRANSFORMER BLOCK 6
+====================================================================================================
+
+GLOBAL SCALE
+  gate2 RMS:                0.093513
+  raw MLP RMS:              2.772185
+  gated MLP residual RMS:   4.366336
+  alignment amplification: 16.843x
+
+  amplification = RMS(gate × MLP) / (RMS(gate) × RMS(MLP))
+  ~1 = roughly independent
+  >>1 = large gates and large MLP activations strongly coincide
+
+MAGNITUDE DISTRIBUTIONS
+  |gate2|                  p50=0.02191 p90=0.06711 p95=0.08591 p99=0.13479 p99.9=1.61563 max=2.05027
+  |raw MLP activation|     p50=0.30439 p90=0.78297 p95=0.98269 p99=1.69759 p99.9=51.70970 max=75.74261
+  |gated residual|         p50=0.00546 p90=0.03161 p95=0.04842 p99=0.11123 p99.9=84.61391 max=155.29260
+
+PER-CHANNEL RMS DISTRIBUTIONS
+  gate channel RMS         p50=0.03045 p90=0.06073 p95=0.07455 p99=0.10864 p99.9=1.45827 max=1.65209
+  MLP channel RMS          p50=0.38017 p90=0.69258 p95=0.88186 p99=1.73710 p99.9=47.04148 max=53.53931
+  residual channel RMS     p50=0.01241 p90=0.03262 p95=0.04971 p99=0.09698 p99.9=72.49953 max=91.62342
+  channel alignment        p50=1.00766 p90=1.21549 p95=1.28116 p99=1.43423 p99.9=1.54348 max=1.63373
+
+CHANNEL CORRELATIONS
+  gate ↔ MLP RMS:       Pearson=+0.9719  Spearman=+0.2058
+  gate ↔ residual RMS:  Pearson=+0.9688  Spearman=+0.8455
+  MLP ↔ residual RMS:   Pearson=+0.9920  Spearman=+0.6103
+
+RESIDUAL ENERGY CONCENTRATION
+  top  1 channels:  68.802%
+  top  5 channels:  99.998%
+  top 10 channels:  99.998%
+  top 20 channels:  99.998%
+  top 50 channels:  99.999%
+
+TOP 20 CHANNELS BY GATED-MLP RESIDUAL RMS
+  ch    res RMS   gate RMS    MLP RMS     align  gate rk  MLP rk   energy%
+----------------------------------------------------------------------------------
+ 205    91.6234     1.6521    53.5393     1.036        1       1   68.802%
+ 429    61.6952     1.3488    43.3704     1.055        2       2   31.195%
+  78     0.2050     0.0589     3.6788     0.946       76       3    0.000%
+  13     0.1687     0.1032     1.4140     1.157        8      10    0.000%
+ 342     0.1267     0.0559     2.2611     1.002       94       4    0.000%
+ 592     0.1131     0.0909     1.3408     0.928       16      11    0.000%
+ 129     0.0988     0.1001     0.8767     1.125       12      34    0.000%
+  56     0.0942     0.0821     1.0810     1.061       20      12    0.000%
+ 591     0.0806     0.0418     1.9218     1.003      198       5    0.000%
+ 152     0.0790     0.0911     0.9008     0.963       15      27    0.000%
+ 550     0.0736     0.0767     0.7488     1.282       28      49    0.000%
+  45     0.0712     0.1123     0.4785     1.324        6     178    0.000%
+ 527     0.0684     0.0918     0.6885     1.082       14      66    0.000%
+ 264     0.0637     0.0698     0.7093     1.286       38      58    0.000%
+ 513     0.0629     0.0875     0.6571     1.093       18      79    0.000%
+ 366     0.0607     0.0642     0.7381     1.282       50      55    0.000%
+ 249     0.0604     0.1010     0.6102     0.980       11     100    0.000%
+ 266     0.0600     0.0360     1.6058     1.036      264       8    0.000%
+ 603     0.0598     0.0493     1.0320     1.175      128      16    0.000%
+ 336     0.0593     0.0503     0.9464     1.246      122      23    0.000%
+
+TOP-CHANNEL OVERLAP
+  top  5: res∩gate= 2/5   res∩MLP= 4/5   all-three= 2/5
+  top 10: res∩gate= 3/10   res∩MLP= 6/10   all-three= 3/10
+  top 20: res∩gate=11/20   res∩MLP=10/20   all-three= 5/20
+  top 50: res∩gate=24/50   res∩MLP=30/50   all-three=10/50
+
+PER-SAMPLE DIAGNOSIS
+ n       t   cat      gate       MLP     resid     align   top10 E
+--------------------------------------------------------------------------------
+ 0   0.050     0    0.0623    2.4475    2.5731     16.87   100.00%
+ 1   0.250     1    0.0839    2.8464    3.9678     16.62   100.00%
+ 2   0.500     2    0.0964    2.4159    3.7669     16.17   100.00%
+ 3   0.900     3    0.1215    3.2881    6.3013     15.78   100.00%
+
+====================================================================================================
+TRANSFORMER BLOCK 7
+====================================================================================================
+
+GLOBAL SCALE
+  gate2 RMS:                0.099044
+  raw MLP RMS:              8.707303
+  gated MLP residual RMS:   15.427033
+  alignment amplification: 17.888x
+
+  amplification = RMS(gate × MLP) / (RMS(gate) × RMS(MLP))
+  ~1 = roughly independent
+  >>1 = large gates and large MLP activations strongly coincide
+
+MAGNITUDE DISTRIBUTIONS
+  |gate2|                  p50=0.01033 p90=0.02906 p95=0.03691 p99=0.05713 p99.9=1.90859 max=2.11300
+  |raw MLP activation|     p50=0.42588 p90=1.17089 p95=1.49872 p99=2.83268 p99.9=176.90457 max=213.67085
+  |gated residual|         p50=0.00353 p90=0.02190 p95=0.03588 p99=0.09430 p99.9=304.04053 max=447.44202
+
+PER-CHANNEL RMS DISTRIBUTIONS
+  gate channel RMS         p50=0.01481 p90=0.02729 p95=0.03102 p99=0.04283 p99.9=1.69203 max=1.89158
+  MLP channel RMS          p50=0.46669 p90=1.08037 p95=1.37011 p99=2.70737 p99.9=146.51804 max=177.35616
+  residual channel RMS     p50=0.00666 p90=0.02305 p95=0.03513 p99=0.08565 p99.9=250.03096 max=333.35245
+  channel alignment        p50=1.01303 p90=1.22730 p95=1.27463 p99=1.41384 p99.9=1.58374 max=1.62311
+
+CHANNEL CORRELATIONS
+  gate ↔ MLP RMS:       Pearson=+0.9945  Spearman=+0.2382
+  gate ↔ residual RMS:  Pearson=+0.9857  Spearman=+0.7571
+  MLP ↔ residual RMS:   Pearson=+0.9951  Spearman=+0.7482
+
+RESIDUAL ENERGY CONCENTRATION
+  top  1 channels:  72.956%
+  top  5 channels: 100.000%
+  top 10 channels: 100.000%
+  top 20 channels: 100.000%
+  top 50 channels: 100.000%
+
+TOP 20 CHANNELS BY GATED-MLP RESIDUAL RMS
+  ch    res RMS   gate RMS    MLP RMS     align  gate rk  MLP rk   energy%
+----------------------------------------------------------------------------------
+ 205   333.3524     1.8916   177.3562     0.994        1       1   72.956%
+ 429   202.9572     1.5793   129.0956     0.995        2       2   27.044%
+ 266     0.2033     0.0305     6.5671     1.016       37       3    0.000%
+  89     0.1825     0.0598     3.0590     0.998        3       6    0.000%
+  78     0.1548     0.0410     4.4032     0.858       10       4    0.000%
+ 181     0.1132     0.0542     2.1747     0.961        4      12    0.000%
+  79     0.0873     0.0369     2.4150     0.980       14      11    0.000%
+ 221     0.0830     0.0351     2.4568     0.963       23      10    0.000%
+ 188     0.0820     0.0352     2.4700     0.943       22       9    0.000%
+ 556     0.0747     0.0213     3.4472     1.017      135       5    0.000%
+ 396     0.0731     0.0361     2.0044     1.012       17      14    0.000%
+ 250     0.0628     0.0283     1.9814     1.120       56      16    0.000%
+ 472     0.0610     0.0380     1.5813     1.016       13      25    0.000%
+ 589     0.0576     0.0465     1.3429     0.923        5      36    0.000%
+ 603     0.0572     0.0288     2.0209     0.982       51      13    0.000%
+ 230     0.0554     0.0293     1.9471     0.971       47      17    0.000%
+ 147     0.0549     0.0289     1.9193     0.991       49      18    0.000%
+ 124     0.0543     0.0224     2.4978     0.971      113       8    0.000%
+ 446     0.0531     0.0181     2.8413     1.032      212       7    0.000%
+ 171     0.0505     0.0460     1.0299     1.065        6      75    0.000%
+
+TOP-CHANNEL OVERLAP
+  top  5: res∩gate= 3/5   res∩MLP= 4/5   all-three= 2/5
+  top 10: res∩gate= 5/10   res∩MLP= 8/10   all-three= 4/10
+  top 20: res∩gate=10/20   res∩MLP=17/20   all-three= 7/20
+  top 50: res∩gate=29/50   res∩MLP=34/50   all-three=18/50
+
+PER-SAMPLE DIAGNOSIS
+ n       t   cat      gate       MLP     resid     align   top10 E
+--------------------------------------------------------------------------------
+ 0   0.050     0    0.0789    9.4147   13.7036     18.44   100.00%
+ 1   0.250     1    0.0966    9.2851   16.3037     18.17   100.00%
+ 2   0.500     2    0.1012    6.6731   12.1483     17.98   100.00%
+ 3   0.900     3    0.1158    9.1590   18.7295     17.65   100.00%
+
+====================================================================================================
+WHAT TO LOOK FOR
+====================================================================================================
+
+1. ALIGNMENT AMPLIFICATION
+   ~1-2x:
+       gate and MLP magnitudes are not strongly aligned.
+
+   >5x:
+       suspicious channel/sample alignment.
+
+   >10x:
+       severe alignment pathology.
+
+2. RESIDUAL ENERGY CONCENTRATION
+   If top 5-20 / 640 channels contain a huge fraction of energy,
+   the blow-up is channel-localized rather than a general FFN scale issue.
+
+3. TOP-CHANNEL OVERLAP
+   If residual-top channels are also gate-top AND MLP-top channels,
+   adaLN gating is amplifying exactly the already-large FFN channels.
+
+4. PER-SAMPLE DIAGNOSIS
+   If only one timestep/sample explodes, the issue may be conditioning/time
+   dependent rather than universally architectural.
+
+5. BLOCK 6 -> BLOCK 7
+   If the same channels appear in both blocks, the pathology is propagating
+   through depth rather than appearing independently in block 7.
+

@@ -257,6 +257,29 @@ conditioning, preprocessing, and FID pipeline. Both existing NFE objectives rema
 available without changes to MeanFlow. See [the exact architecture and parameter
 allocation](hybrid_v2_architecture.md) for the budget adjustment and validation.
 
+InceptFlow adds conditioned multi-scale convolution around a shallower global
+Transformer bottleneck. Select `--backbone inceptflow` for a fresh run. Its defaults
+are width 640, eight heads, six full-attention Transformer blocks with 2D RoPE,
+and a 160-channel stem (70,026,723 total parameters).
+
+The encoder uses two ResBlocks at 64×64, a ResBlock followed by an Inception block
+at 32×32, and a ResBlock at 16×16. Two Inception blocks refine the Transformer
+output before upsampling; the decoder uses an Inception block at 32×32 and a
+ResBlock at 64×64, with concatenated encoder skips. Each Inception block has
+1×1, 3×3, stacked 3×3, and dilated 3×3 branches, FiLM conditioning, and a
+zero-initialized final 1×1 projection. Equal-width blocks therefore start as
+identity; the decoder block starts as its skip channel projection.
+
+```bash
+python train.py --mode few_nfe --backbone inceptflow --device cuda --epochs 100 --batch_size 32 \
+  --checkpoint_dir checkpoints/inceptflow --output_dir runs/inceptflow
+```
+
+Use `--mode one_nfe` for MeanFlow or `--mode both` to train both objectives.
+InceptFlow supports the same sampling, evaluation, checkpoint metadata, and exact
+training resume paths as the other backbones. Existing Hybrid checkpoints retain
+their original architecture; InceptFlow requires a fresh training run.
+
 Select the class-conditional EDM-style U-Net with `--backbone edm_unet`:
 
 ```shell

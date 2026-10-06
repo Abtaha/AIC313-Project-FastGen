@@ -27,6 +27,7 @@ from src.models.dit import DiTConfig
 from src.models.hybrid import HybridConfig
 from src.models.hybrid_v2 import HybridV2Config
 from src.models.hybrid_v3 import HybridV3Config
+from src.models.inceptflow import InceptFlowConfig
 from src.models.edm_unet import EDMUNetConfig
 from src.meanflow import MEANFLOW_DEFAULTS, meanflow_loss, sample_times
 from src.fid_checks import run_fid_check
@@ -207,8 +208,9 @@ def train_mode(args, data, device, mode):
             args.base_channels = args.width // 4
         config = config_class(width=args.width, base_channels=args.base_channels,
                                depth=args.depth, heads=args.heads)
-    elif args.backbone in ("hybrid", "hybrid_v2"):
-        config_class = HybridV2Config if args.backbone == "hybrid_v2" else HybridConfig
+    elif args.backbone in ("hybrid", "hybrid_v2", "inceptflow"):
+        config_class = {"hybrid": HybridConfig, "hybrid_v2": HybridV2Config,
+                        "inceptflow": InceptFlowConfig}[args.backbone]
         if "patch_size" in args.specified:
             raise ValueError("--patch_size applies only to --backbone dit")
         if args.base_channels is None:
@@ -221,7 +223,7 @@ def train_mode(args, data, device, mode):
         )
     else:
         if "base_channels" in args.specified:
-            raise ValueError("--base_channels applies only to hybrid, hybrid_v2, hybrid_v3, or edm_unet backbones")
+            raise ValueError("--base_channels applies only to hybrid, hybrid_v2, hybrid_v3, inceptflow, or edm_unet backbones")
         config = DiTConfig(
             width=args.width, depth=args.depth, heads=args.heads,
             patch_size=args.patch_size,
@@ -309,7 +311,7 @@ def train_mode(args, data, device, mode):
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats(device)
     print(f"{mode}: {args.backbone}, {model.num_parameters:,} parameters, {device}, {precision}")
-    if args.backbone in ("hybrid_v2", "hybrid_v3"):
+    if args.backbone in ("hybrid_v2", "hybrid_v3", "inceptflow"):
         print(f"Parameter allocation: {model.backbone.parameter_breakdown()}")
     print(f"Objective: {model.objective}")
     started = time.monotonic()
@@ -557,7 +559,7 @@ def parse_args():
     )
     parser.add_argument(
         "--backbone",
-        choices=("dit", "hybrid", "hybrid_v2", "hybrid_v3", "edm_unet"),
+        choices=("dit", "hybrid", "hybrid_v2", "hybrid_v3", "inceptflow", "edm_unet"),
         default="dit",
     )
     parser.add_argument(
@@ -587,8 +589,8 @@ def parse_args():
     parser.add_argument("--width", type=int, default=DiTConfig().width,
                         help="Model width (edm_unet/hybrid_v3: 4 * base_channels, default 512)")
     parser.add_argument("--depth", type=int, default=DiTConfig().depth,
-                        help=f"Transformer blocks (dit={DiTConfig().depth}, hybrid={HybridConfig().depth}, hybrid_v2={HybridV2Config().depth}, hybrid_v3=2); edm_unet residual blocks per stage (default 2)")
-    parser.add_argument("--base_channels", type=int, help="Convolutional stem channels; multiple of 32 (edm_unet/hybrid_v3 default 128, hybrid/hybrid_v2 default width/4)")
+                        help=f"Transformer blocks (dit={DiTConfig().depth}, hybrid={HybridConfig().depth}, hybrid_v2={HybridV2Config().depth}, hybrid_v3=2, inceptflow=6); edm_unet residual blocks per stage (default 2)")
+    parser.add_argument("--base_channels", type=int, help="Convolutional stem channels; multiple of 32 (edm_unet/hybrid_v3 default 128, hybrid/hybrid_v2/inceptflow default width/4)")
     parser.add_argument("--heads", type=int, default=8)
     parser.add_argument("--patch_size", type=int, choices=(2, 4, 8), default=4)
     parser.add_argument("--knots", type=float, nargs=3, default=(0.25, 0.5, 0.75))

@@ -76,6 +76,7 @@ def build_backbone(config=None):
     from src.models.hybrid import HybridFlowNet
     from src.models.hybrid_v2 import HybridV2FlowNet
     from src.models.hybrid_v3 import HybridV3FlowNet
+    from src.models.inceptflow import InceptFlowNet
     from src.models.edm_unet import EDMUNetFlowNet
 
     if config is None:
@@ -97,6 +98,9 @@ def build_backbone(config=None):
 
     if backbone == "hybrid_v3":
         return HybridV3FlowNet(config)
+
+    if backbone == "inceptflow":
+        return InceptFlowNet(config)
 
     if backbone == "edm_unet":
         return EDMUNetFlowNet(config)
