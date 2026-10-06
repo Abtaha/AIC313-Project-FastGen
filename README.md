@@ -239,6 +239,7 @@ EDM U-Net uses width 512. All default to eight attention heads:
 | DiT | 13 | — | 98,263,728 |
 | Hybrid | 10 | 160 | 98,227,043 |
 | Hybrid-v2 | 8 | 160 | 99,595,363 |
+| Hybrid-v3 | 2 (8×8 tokens) | 128 | 98,386,179 |
 | EDM U-Net | 0 (spatial attention only) | 128 | 94,179,587 |
 
 Hybrid-v2 reallocates Transformer capacity into the convolutional path. Select
@@ -287,6 +288,27 @@ For EDM U-Net, `--depth` sets residual blocks per encoder/decoder stage (default
 Attention heads must divide both the 16×16 and 4×4 attention channel counts. A small
 configuration is `--base_channels 32 --depth 1 --heads 2`. Architecture metadata
 automatically reconstructs this backbone during evaluation and training resume.
+
+Hybrid-v3 keeps the deep U-Net hierarchy and inserts two rotary adaLN-Zero DiT
+blocks after the 8×8 encoder stage, before saving that skip and downsampling
+to 4×4. Select `--backbone hybrid_v3`; its defaults are width 512 and stem 128.
+Every encoder/decoder stage has two residual blocks, with attention between
+the blocks at 16×16. The additional 4×4 bottleneck uses one residual block
+plus attention to keep the full model below 100M. `--depth` counts DiT blocks
+for V3; convolutional stage depth stays fixed at two.
+
+```shell
+python train.py --mode few_nfe --backbone hybrid_v3 --device cuda --epochs 100 --batch_size 32 \
+  --checkpoint_dir checkpoints/hybrid_v3 --output_dir runs/hybrid_v3
+
+python evaluate_solver_sweep_hybrid100m.py \
+  --model_checkpoint checkpoints/hybrid_v3/few_nfe.ckpt \
+  --solvers midpoint --nfes 16 64
+```
+
+The next experiment's target is midpoint-64 FID below 54.20, using the same
+training budget, data split, FID reference, sample count, and sampling seed as
+Hybrid-v2. See [V3 architecture and experiment criteria](hybrid_v3_architecture.md).
 
 These defaults apply to both NFE modes and include all conditioning and output
 layers within the 100M budget. Existing checkpoints retain their saved architecture

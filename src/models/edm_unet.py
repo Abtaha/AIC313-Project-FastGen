@@ -102,9 +102,13 @@ class Stage(nn.Module):
 class EDMUNetFlowNet(nn.Module):
     """64 -> 32 -> 16 -> 8 -> 4 U-Net; attention at 16 and the bottleneck."""
 
+    config_type = EDMUNetConfig
+    residual_depth = None
+    bottleneck_depth = 2
+
     def __init__(self, config=None):
         super().__init__()
-        self.config = config if isinstance(config, EDMUNetConfig) else EDMUNetConfig(**(config or {}))
+        self.config = config if isinstance(config, self.config_type) else self.config_type(**(config or {}))
         c = self.config
         channels = c.channels
         self.category = nn.Embedding(151, c.width)
@@ -113,15 +117,18 @@ class EDMUNetFlowNet(nn.Module):
         self.interval = TimeEmbedding(c.width)
         self.stem = nn.Conv2d(3, channels[0], 3, padding=1)
         self.encoder = nn.ModuleList([
-            Stage(ch, ch, c, attention=i == 2) for i, ch in enumerate(channels)
+            Stage(ch, ch, c, attention=i == 2, depth=self.residual_depth)
+            for i, ch in enumerate(channels)
         ])
         self.downsample = nn.ModuleList([
             nn.Conv2d(a, b, 3, stride=2, padding=1)
             for a, b in zip(channels[:-1], channels[1:])
         ])
-        self.bottleneck = Stage(channels[-1], channels[-1], c, attention=True, depth=2)
+        self.bottleneck = Stage(channels[-1], channels[-1], c, attention=True,
+                                depth=self.bottleneck_depth)
         self.decoder = nn.ModuleList([
-            Stage(2 * ch, ch, c, attention=i == 2) for i, ch in enumerate(channels)
+            Stage(2 * ch, ch, c, attention=i == 2, depth=self.residual_depth)
+            for i, ch in enumerate(channels)
         ])
         self.upsample = nn.ModuleList([
             nn.Conv2d(b, a, 3, padding=1)
@@ -154,6 +161,7 @@ class EDMUNetFlowNet(nn.Module):
         skips = []
         for i, stage in enumerate(self.encoder):
             h = stage(h, condition)
+            h = self.mix_encoder_stage(i, h, condition)
             skips.append(h)
             if i < len(self.downsample):
                 h = self.downsample[i](h)
@@ -163,6 +171,9 @@ class EDMUNetFlowNet(nn.Module):
             if i > 0:
                 h = self.upsample[i - 1](F.interpolate(h, scale_factor=2, mode="nearest"))
         return self.output(F.silu(self.output_norm(h)))
+
+    def mix_encoder_stage(self, index, x, condition):
+        return x
 
     def architecture_config(self):
         return asdict(self.config)
