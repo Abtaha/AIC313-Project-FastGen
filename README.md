@@ -29,6 +29,11 @@ Each category is evaluated with exactly 20 generated images.
 
 ## Environment Setup
 
+The added EDM teacher implementation, training commands, monitoring, guidance
+sweep, and distillation APIs are documented in [TEACHER.md](TEACHER.md).
+The teacher is trained from scratch; the 1-NFE and few-NFE students will be
+implemented separately during distillation.
+
 ```shell
 conda create -n pokemon-generation python=3.10 -y
 conda activate pokemon-generation
@@ -502,4 +507,3 @@ zero score
 ## Dataset Citation
 
 - [Pokemon Generation One - 22k](https://www.kaggle.com/datasets/bhawks/pokemon-generation-one-22k)
-
