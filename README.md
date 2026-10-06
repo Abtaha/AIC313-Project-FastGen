@@ -231,13 +231,15 @@ Select the convolutional U-Net with Transformer bottleneck using `--backbone hyb
 python train.py --mode both --backbone hybrid --device cuda --epochs 100 --batch_size 32
 ```
 
-DiT remains the default. All three backbones use width 640 and eight attention heads:
+DiT remains the default. DiT and the hybrid backbones use width 640;
+EDM U-Net uses width 512. All default to eight attention heads:
 
 | Backbone | Transformer blocks | Stem channels | Total parameters |
 | --- | --- | --- | --- |
 | DiT | 13 | — | 98,263,728 |
 | Hybrid | 10 | 160 | 98,227,043 |
 | Hybrid-v2 | 8 | 160 | 99,595,363 |
+| EDM U-Net | 0 (spatial attention only) | 128 | 94,179,587 |
 
 Hybrid-v2 reallocates Transformer capacity into the convolutional path. Select
 `--backbone hybrid_v2` for a fresh experiment; checkpoint metadata preserves this
@@ -253,6 +255,38 @@ learning rate, uniform FM timestep sampling, `*1000` timestep scale, class
 conditioning, preprocessing, and FID pipeline. Both existing NFE objectives remain
 available without changes to MeanFlow. See [the exact architecture and parameter
 allocation](hybrid_v2_architecture.md) for the budget adjustment and validation.
+
+Select the class-conditional EDM-style U-Net with `--backbone edm_unet`:
+
+```shell
+python train.py --mode few_nfe --backbone edm_unet --device cuda --epochs 100 --batch_size 32 \
+  --checkpoint_dir checkpoints/edm_unet --output_dir runs/edm_unet
+```
+
+Its encoder follows 64×64 → 32×32 → 16×16 → 8×8 → 4×4 with 128/256/384/512/512
+channels, two FiLM-conditioned residual blocks per stage, and self-attention
+between the blocks only at 16×16. The 4×4 bottleneck is
+ResBlock → Attention → ResBlock. The decoder concatenates encoder features
+at each matching resolution, uses two residual blocks and attention only at
+16×16, and upsamples with nearest-neighbor interpolation plus a 3×3
+convolution. GroupNorm → SiLU → 3×3 convolution predicts a velocity tensor
+with the same shape as the input. Residual additions are scaled by 1/√2,
+and the output head starts at zero.
+
+Time and class embeddings condition every residual block. An additional interval
+embedding supports the existing MeanFlow path. This is an EDM-style backbone
+with the existing flow objectives, without EDM noise sampling or diffusion
+preconditioning. The few-NFE command above retains straight-line noise-to-data
+flow matching and the four-evaluation Euler sampler.
+For one-NFE flow matching, select `--mode one_nfe --one_objective flow_matching`;
+the default one-NFE objective remains MeanFlow.
+
+For EDM U-Net, `--depth` sets residual blocks per encoder/decoder stage (default
+2); the bottleneck always has two blocks. `--width` must equal four times
+`--base_channels` (default 128), and stem channels must be a multiple of 32.
+Attention heads must divide both the 16×16 and 4×4 attention channel counts. A small
+configuration is `--base_channels 32 --depth 1 --heads 2`. Architecture metadata
+automatically reconstructs this backbone during evaluation and training resume.
 
 These defaults apply to both NFE modes and include all conditioning and output
 layers within the 100M budget. Existing checkpoints retain their saved architecture
@@ -320,7 +354,7 @@ weights download on the first check if they are absent; they are used solely
 for evaluation. FID computation uses the training CUDA device, or CPU when
 training on MPS/CPU, and zero feature-loader workers for clean signal handling.
 
-Both architectures support both objectives. Evaluation selects the backbone and
+All backbones support both objectives. Evaluation selects the backbone and
 objective automatically from checkpoint metadata, using the existing `evaluate.py`
 commands below. CUDA training and memory consumption must still be checked on
 the server.

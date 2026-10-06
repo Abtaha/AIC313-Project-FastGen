@@ -75,6 +75,7 @@ def build_backbone(config=None):
     from src.models.dit import PixelDiT
     from src.models.hybrid import HybridFlowNet
     from src.models.hybrid_v2 import HybridV2FlowNet
+    from src.models.edm_unet import EDMUNetFlowNet
 
     if config is None:
         return PixelDiT()
@@ -92,6 +93,9 @@ def build_backbone(config=None):
 
     if backbone == "hybrid_v2":
         return HybridV2FlowNet(config)
+
+    if backbone == "edm_unet":
+        return EDMUNetFlowNet(config)
 
     raise ValueError(f"Unknown backbone: {backbone!r}")
 

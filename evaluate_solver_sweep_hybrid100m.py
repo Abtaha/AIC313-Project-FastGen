@@ -2,16 +2,44 @@
 
 Examples:
 
+    # Default diagnostic sweep for whatever checkpoint is configured below.
+    uv run --no-sync evaluate_solver_sweep.py
+
+    # Explicit checkpoint.
+    uv run --no-sync evaluate_solver_sweep.py \
+        --model_checkpoint checkpoints/hybrid_v2/few_nfe_epoch_0090.ckpt
+
     # Submission-budget comparison only: exactly 4 model evaluations.
     uv run --no-sync evaluate_solver_sweep.py \
-        --model_checkpoint checkpoints/hybrid100m/few_nfe_epoch_0090.ckpt \
+        --model_checkpoint checkpoints/hybrid_v2/few_nfe_epoch_0090.ckpt \
         --nfes 4
 
-    # Full diagnostic sweep.
+    # Larger diagnostic sweep.
     uv run --no-sync evaluate_solver_sweep.py \
-        --model_checkpoint checkpoints/hybrid100m/few_nfe_epoch_0090.ckpt
+        --model_checkpoint checkpoints/hybrid_v2/few_nfe_epoch_0090.ckpt \
+        --nfes 4 8 16 32 64 \
+        --solvers euler midpoint heun rk4
+
+    # Override automatic result directory if desired.
+    uv run --no-sync evaluate_solver_sweep.py \
+        --model_checkpoint checkpoints/hybrid_v2/few_nfe_epoch_0090.ckpt \
+        --output_dir ./results/custom_hybrid_v2_run
 
 This does NOT retrain anything.
+
+IMPORTANT:
+    By default, each checkpoint gets its own output directory:
+
+        checkpoints/hybrid_v2/few_nfe_epoch_0090.ckpt
+
+    becomes:
+
+        results/solver_sweep_hybrid_v2_few_nfe_epoch_0090/
+
+    This prevents results from different models/checkpoints from being mixed
+    or accidentally skipped because they share the same experiment keys.
+
+    The validation reference images are shared across experiments.
 """
 
 import argparse
@@ -31,7 +59,11 @@ from model import Model
 
 SAMPLES_PER_CATEGORY = 20
 
-# Actual backbone evaluations required for ONE integration step.
+
+# ---------------------------------------------------------------------------
+# Solver cost in actual neural-network function evaluations.
+# ---------------------------------------------------------------------------
+
 SOLVER_COST = {
     "euler": 1,
     "heun": 2,
@@ -40,21 +72,31 @@ SOLVER_COST = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Reference dataset
+# ---------------------------------------------------------------------------
+
+
 def prepare_reference_set(data_module, reference_dir):
     """Export the validation split exactly once."""
+
     reference_dir = Path(reference_dir)
     reference_dir.mkdir(parents=True, exist_ok=True)
 
     existing = list(reference_dir.glob("*.png"))
+
     if existing:
-        print(f"Using existing reference set: {len(existing)} images")
+        print(f"Using existing reference set: " f"{len(existing)} images")
         return reference_dir
 
     print("Exporting validation reference images...")
 
     count = 0
 
-    for batch in tqdm(data_module.val_dataloader(), desc="reference"):
+    for batch in tqdm(
+        data_module.val_dataloader(),
+        desc="reference",
+    ):
         images = batch[0] if isinstance(batch, (tuple, list)) else batch
 
         for image in images:
@@ -65,7 +107,13 @@ def prepare_reference_set(data_module, reference_dir):
             count += 1
 
     print(f"Reference images: {count}")
+
     return reference_dir
+
+
+# ---------------------------------------------------------------------------
+# FID
+# ---------------------------------------------------------------------------
 
 
 def compute_fid(
@@ -86,6 +134,11 @@ def compute_fid(
     )
 
 
+# ---------------------------------------------------------------------------
+# Time schedules
+# ---------------------------------------------------------------------------
+
+
 def make_schedule(steps, power=1.0):
     """Create monotonically increasing nodes from t=0 to t=1.
 
@@ -98,19 +151,30 @@ def make_schedule(steps, power=1.0):
     power = 1:
         uniform schedule
     """
-    u = torch.linspace(0.0, 1.0, steps + 1)
+
+    u = torch.linspace(
+        0.0,
+        1.0,
+        steps + 1,
+    )
 
     nodes = u.pow(power)
 
-    # Be absolutely exact at the endpoints.
+    # Be absolutely exact at endpoints.
     nodes[0] = 0.0
     nodes[-1] = 1.0
 
     return [float(x) for x in nodes]
 
 
+# ---------------------------------------------------------------------------
+# Model evaluation
+# ---------------------------------------------------------------------------
+
+
 def velocity(model, x, t, categories):
     """Evaluate the standard FM vector field once."""
+
     timestep = torch.full(
         (x.shape[0],),
         float(t),
@@ -125,6 +189,11 @@ def velocity(model, x, t, categories):
     )
 
 
+# ---------------------------------------------------------------------------
+# ODE integration
+# ---------------------------------------------------------------------------
+
+
 @torch.inference_mode()
 def integrate(
     model,
@@ -135,7 +204,24 @@ def integrate(
     total_nfe,
     schedule_power=1.0,
 ):
-    """Integrate noise(t=0) -> data(t=1) using exactly total_nfe calls."""
+    """Integrate noise(t=0) -> data(t=1).
+
+    total_nfe is the exact number of model forward passes.
+
+    For example:
+
+        Euler:
+            NFE=4 -> 4 integration steps
+
+        Midpoint:
+            NFE=4 -> 2 integration steps
+
+        Heun:
+            NFE=4 -> 2 integration steps
+
+        RK4:
+            NFE=4 -> 1 integration step
+    """
 
     cost = SOLVER_COST[solver]
 
@@ -157,11 +243,19 @@ def integrate(
 
     eval_count = 0
 
-    for start, end in zip(nodes[:-1], nodes[1:]):
+    for start, end in zip(
+        nodes[:-1],
+        nodes[1:],
+    ):
         dt = end - start
 
+        # ---------------------------------------------------------------
+        # Euler
+        # ---------------------------------------------------------------
+
         if solver == "euler":
-            # 1 NFE
+            # 1 NFE per integration step.
+
             k1 = velocity(
                 model,
                 x,
@@ -173,9 +267,13 @@ def integrate(
 
             eval_count += 1
 
+        # ---------------------------------------------------------------
+        # Explicit midpoint / RK2
+        # ---------------------------------------------------------------
+
         elif solver == "midpoint":
-            # Explicit midpoint / RK2.
             # 2 NFE per integration step.
+
             k1 = velocity(
                 model,
                 x,
@@ -197,9 +295,13 @@ def integrate(
 
             eval_count += 2
 
+        # ---------------------------------------------------------------
+        # Heun / improved Euler
+        # ---------------------------------------------------------------
+
         elif solver == "heun":
-            # Improved Euler / trapezoidal RK2.
             # 2 NFE per integration step.
+
             k1 = velocity(
                 model,
                 x,
@@ -220,9 +322,13 @@ def integrate(
 
             eval_count += 2
 
+        # ---------------------------------------------------------------
+        # Classical RK4
+        # ---------------------------------------------------------------
+
         elif solver == "rk4":
-            # Classical RK4.
             # 4 NFE per integration step.
+
             half_t = start + 0.5 * dt
 
             k1 = velocity(
@@ -262,10 +368,15 @@ def integrate(
 
     if eval_count != total_nfe:
         raise RuntimeError(
-            f"NFE accounting error: got {eval_count}, " f"expected {total_nfe}"
+            f"NFE accounting error: " f"got {eval_count}, " f"expected {total_nfe}"
         )
 
     return x.clamp(-1, 1)
+
+
+# ---------------------------------------------------------------------------
+# Sampling
+# ---------------------------------------------------------------------------
 
 
 @torch.inference_mode()
@@ -285,7 +396,7 @@ def generate_samples(
 
     output_dir = Path(output_dir)
 
-    # Critical: never allow stale images from an earlier experiment
+    # Never allow stale images from an earlier experiment
     # to contaminate FID.
     if output_dir.exists():
         shutil.rmtree(output_dir)
@@ -300,22 +411,31 @@ def generate_samples(
     parameter = next(model.parameters())
     dtype = parameter.dtype
 
-    # Reinitializing this generator for every experiment means every
-    # solver receives exactly the same initial Gaussian noise.
+    # Resetting the generator for every experiment means every
+    # solver/configuration receives exactly the same Gaussian noise.
     generator = torch.Generator(device=device).manual_seed(seed)
 
     image_counts = {}
 
     for start in tqdm(
-        range(0, len(categories), batch_size),
-        desc=f"{solver} NFE={nfe} p={schedule_power:g}",
+        range(
+            0,
+            len(categories),
+            batch_size,
+        ),
+        desc=(f"{solver} " f"NFE={nfe} " f"p={schedule_power:g}"),
     ):
         batch_categories = categories[start : start + batch_size].to(device)
 
         count = len(batch_categories)
 
         x = torch.randn(
-            (count, 3, 64, 64),
+            (
+                count,
+                3,
+                64,
+                64,
+            ),
             device=device,
             dtype=dtype,
             generator=generator,
@@ -350,7 +470,16 @@ def generate_samples(
     return output_dir
 
 
-def experiment_key(solver, nfe, power):
+# ---------------------------------------------------------------------------
+# Experiment bookkeeping
+# ---------------------------------------------------------------------------
+
+
+def experiment_key(
+    solver,
+    nfe,
+    power,
+):
     return f"{solver}" f"_nfe{nfe}" f"_p{power:g}"
 
 
@@ -382,7 +511,10 @@ def write_csv(path, records):
         "seed",
     ]
 
-    with path.open("w", newline="") as file:
+    with path.open(
+        "w",
+        newline="",
+    ) as file:
         writer = csv.DictWriter(
             file,
             fieldnames=fields,
@@ -397,6 +529,11 @@ def write_csv(path, records):
             writer.writerow({name: record[name] for name in fields})
 
 
+# ---------------------------------------------------------------------------
+# Build sweep
+# ---------------------------------------------------------------------------
+
+
 def build_experiments(args):
     experiments = []
 
@@ -408,10 +545,19 @@ def build_experiments(args):
             if nfe % cost:
                 continue
 
-            experiments.append((solver, nfe, 1.0))
+            experiments.append(
+                (
+                    solver,
+                    nfe,
+                    1.0,
+                )
+            )
 
-    # Extra search specifically for the submission-budget Euler
-    # sampler. Same 4 NFE, different placement of time points.
+    # Extra search specifically for the submission-budget
+    # Euler sampler.
+    #
+    # Same number of NFEs, but different placement
+    # of integration nodes.
     for power in args.euler_powers:
         experiments.append(
             (
@@ -433,13 +579,75 @@ def build_experiments(args):
     return unique
 
 
+# ---------------------------------------------------------------------------
+# Automatic per-checkpoint output directory
+# ---------------------------------------------------------------------------
+
+
+def resolve_output_dir(args):
+    """Return a unique result directory for the selected checkpoint.
+
+    Example:
+
+        checkpoints/hybrid_v2/few_nfe_epoch_0090.ckpt
+
+    becomes:
+
+        results/solver_sweep_hybrid_v2_few_nfe_epoch_0090/
+
+    This prevents experiment keys from one checkpoint from colliding
+    with those from another checkpoint.
+    """
+
+    if args.output_dir is not None:
+        return Path(args.output_dir)
+
+    checkpoint = Path(args.model_checkpoint)
+
+    parent_name = checkpoint.parent.name
+    checkpoint_name = checkpoint.stem
+
+    run_name = f"{parent_name}_" f"{checkpoint_name}"
+
+    return Path("./results") / f"solver_sweep_{run_name}"
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+
 def main(args):
     device = torch.device(args.device)
 
     if device.type == "cuda" and not torch.cuda.is_available():
         raise RuntimeError("CUDA requested but unavailable")
 
-    print(f"Loading checkpoint: " f"{args.model_checkpoint}")
+    # Resolve a checkpoint-specific result directory.
+    root = resolve_output_dir(args)
+
+    root.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    print("=" * 72)
+    print("SOLVER SWEEP")
+    print("=" * 72)
+
+    print(f"Checkpoint : " f"{args.model_checkpoint}")
+
+    print(f"Results    : " f"{root}")
+
+    print(f"Reference  : " f"{args.reference_dir}")
+
+    print("=" * 72)
+
+    # ------------------------------------------------------------------
+    # Load model
+    # ------------------------------------------------------------------
+
+    print(f"\nLoading checkpoint: " f"{args.model_checkpoint}")
 
     model = Model.load_checkpoint(
         args.model_checkpoint,
@@ -458,8 +666,13 @@ def main(args):
     if objective != "flow_matching":
         raise ValueError(
             "This evaluator expects the standard "
-            f"few-NFE flow-matching model; got {objective!r}"
+            "few-NFE flow-matching model; "
+            f"got {objective!r}"
         )
+
+    # ------------------------------------------------------------------
+    # Dataset
+    # ------------------------------------------------------------------
 
     data = PokemonDataModule(
         data_root=args.data_root,
@@ -473,38 +686,46 @@ def main(args):
         args.reference_dir,
     )
 
+    # Exactly 20 samples per Pokémon class.
     categories = torch.arange(
         len(data.category_to_id),
         dtype=torch.long,
     ).repeat_interleave(SAMPLES_PER_CATEGORY)
 
     print(
-        f"{len(data.category_to_id)} categories × "
+        f"\n{len(data.category_to_id)} categories × "
         f"{SAMPLES_PER_CATEGORY} samples = "
         f"{len(categories)} generated images/run"
     )
 
-    root = Path(args.output_dir)
-
-    root.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
+    # ------------------------------------------------------------------
+    # Result files
+    # ------------------------------------------------------------------
 
     log_path = root / "scores.jsonl"
+
     csv_path = root / "scores.csv"
 
     completed = {} if args.force else load_completed(log_path)
 
+    # ------------------------------------------------------------------
+    # Experiments
+    # ------------------------------------------------------------------
+
     experiments = build_experiments(args)
 
     print("\nExperiments:")
+
     for solver, nfe, power in experiments:
         steps = nfe // SOLVER_COST[solver]
 
         print(
             f"  {solver:8s} " f"NFE={nfe:2d} " f"steps={steps:2d} " f"power={power:g}"
         )
+
+    # ------------------------------------------------------------------
+    # Run sweep
+    # ------------------------------------------------------------------
 
     for solver, nfe, power in experiments:
         key = experiment_key(
@@ -514,7 +735,7 @@ def main(args):
         )
 
         if key in completed:
-            print(f"\nSkipping {key}: " f"FID={completed[key]['fid']:.4f}")
+            print(f"\nSkipping {key}: " f"FID=" f"{completed[key]['fid']:.4f}")
             continue
 
         print(f"\n{'=' * 70}\n" f"{key}\n" f"{'=' * 70}")
@@ -585,6 +806,8 @@ def main(args):
 
             raise
 
+        # Rewrite CSV after each successful run,
+        # so partial progress is always preserved.
         successful = [
             record for record in completed.values() if record.get("status") == "ok"
         ]
@@ -594,13 +817,19 @@ def main(args):
             successful,
         )
 
+    # ------------------------------------------------------------------
+    # Final ranking
+    # ------------------------------------------------------------------
+
     successful = sorted(
         (record for record in completed.values() if record.get("status") == "ok"),
         key=lambda x: x["fid"],
     )
 
     print("\n\n" + "=" * 72)
+
     print("FINAL RANKING")
+
     print("=" * 72)
 
     for rank, result in enumerate(
@@ -619,32 +848,42 @@ def main(args):
     print(f"\nResults written to: " f"{csv_path}")
 
 
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
         "--model_checkpoint",
-        default=("checkpoints/hybrid100m/" "few_nfe_epoch_0090.ckpt"),
+        default=("checkpoints/hybrid_v2/" "few_nfe_epoch_0090.ckpt"),
     )
 
     parser.add_argument(
         "--data_root",
-        default="./data/pokemon-generation-one-22k",
+        default=("./data/" "pokemon-generation-one-22k"),
     )
 
     parser.add_argument(
         "--split_dir",
-        default="./data/pokemon-generation-one-22k",
+        default=("./data/" "pokemon-generation-one-22k"),
     )
 
+    # Shared across all models.
+    #
+    # Keep this pointing at your existing reference directory
+    # so we don't waste time exporting the validation set again.
     parser.add_argument(
         "--reference_dir",
-        default="./results/solver_sweep/reference",
+        default=("./results/" "solver_sweep/" "reference"),
     )
 
+    # None = automatically create a result directory
+    # based on checkpoint name.
     parser.add_argument(
         "--output_dir",
-        default="./results/solver_sweep",
+        default=None,
     )
 
     parser.add_argument(
@@ -676,11 +915,21 @@ if __name__ == "__main__":
         default=1234,
     )
 
+    # Smaller diagnostic sweep by default.
+    #
+    # The most important question right now:
+    #
+    #     Is Hybrid V2 bad only at low NFE,
+    #     or is its converged/high-NFE FID also bad?
     parser.add_argument(
         "--nfes",
         type=int,
         nargs="+",
-        default=[4, 8, 16, 32, 64],
+        default=[
+            4,
+            16,
+            64,
+        ],
     )
 
     parser.add_argument(
@@ -689,13 +938,12 @@ if __name__ == "__main__":
         choices=tuple(SOLVER_COST),
         default=[
             "euler",
-            "heun",
             "midpoint",
-            "rk4",
         ],
     )
 
-    # Additional 4-NFE Euler schedule search.
+    # Additional schedule search at the actual
+    # submission budget.
     parser.add_argument(
         "--power_sweep_nfe",
         type=int,
@@ -721,6 +969,8 @@ if __name__ == "__main__":
         action="store_true",
     )
 
+    # Re-run experiments even if that exact configuration
+    # already exists for THIS checkpoint.
     parser.add_argument(
         "--force",
         action="store_true",

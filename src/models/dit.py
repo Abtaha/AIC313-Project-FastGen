@@ -22,7 +22,7 @@ class DiTConfig:
 
     def __post_init__(self):
         if self.backbone != "dit":
-            raise ValueError("Only dit is implemented; U-Net is a future extension.")
+            raise ValueError("DiTConfig requires backbone='dit'")
         if (
             self.width < 4
             or self.depth < 1

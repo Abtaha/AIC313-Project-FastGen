@@ -26,6 +26,7 @@ from model import ModelFewNFE, ModelOneNFE
 from src.models.dit import DiTConfig
 from src.models.hybrid import HybridConfig
 from src.models.hybrid_v2 import HybridV2Config
+from src.models.edm_unet import EDMUNetConfig
 from src.meanflow import MEANFLOW_DEFAULTS, meanflow_loss, sample_times
 from src.fid_checks import run_fid_check
 
@@ -192,7 +193,19 @@ def train_mode(args, data, device, mode):
 
     random.seed(args.seed)
     torch.manual_seed(args.seed)
-    if args.backbone in ("hybrid", "hybrid_v2"):
+    if args.backbone == "edm_unet":
+        if "patch_size" in args.specified:
+            raise ValueError("--patch_size applies only to --backbone dit")
+        if not checkpoint:
+            if "width" not in args.specified:
+                args.width = 4 * (args.base_channels or EDMUNetConfig().base_channels)
+            if "depth" not in args.specified:
+                args.depth = EDMUNetConfig().depth
+        if args.base_channels is None:
+            args.base_channels = args.width // 4
+        config = EDMUNetConfig(width=args.width, base_channels=args.base_channels,
+                               depth=args.depth, heads=args.heads)
+    elif args.backbone in ("hybrid", "hybrid_v2"):
         config_class = HybridV2Config if args.backbone == "hybrid_v2" else HybridConfig
         if "patch_size" in args.specified:
             raise ValueError("--patch_size applies only to --backbone dit")
@@ -206,7 +219,7 @@ def train_mode(args, data, device, mode):
         )
     else:
         if "base_channels" in args.specified:
-            raise ValueError("--base_channels applies only to hybrid backbones")
+            raise ValueError("--base_channels applies only to hybrid or edm_unet backbones")
         config = DiTConfig(
             width=args.width, depth=args.depth, heads=args.heads,
             patch_size=args.patch_size,
@@ -542,7 +555,7 @@ def parse_args():
     )
     parser.add_argument(
         "--backbone",
-        choices=("dit", "hybrid", "hybrid_v2"),
+        choices=("dit", "hybrid", "hybrid_v2", "edm_unet"),
         default="dit",
     )
     parser.add_argument(
@@ -569,10 +582,11 @@ def parse_args():
     parser.add_argument("--weight_decay", type=float, default=0.01)
     parser.add_argument("--grad_clip", type=float, default=1.0)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--width", type=int, default=DiTConfig().width)
+    parser.add_argument("--width", type=int, default=DiTConfig().width,
+                        help="Model width (edm_unet: 4 * base_channels, default 512)")
     parser.add_argument("--depth", type=int, default=DiTConfig().depth,
-                        help=f"Transformer blocks (default: dit={DiTConfig().depth}, hybrid={HybridConfig().depth}, hybrid_v2={HybridV2Config().depth})")
-    parser.add_argument("--base_channels", type=int, help="Hybrid stem channels; defaults to width/4 and must be a multiple of 32")
+                        help=f"Transformer blocks (dit={DiTConfig().depth}, hybrid={HybridConfig().depth}, hybrid_v2={HybridV2Config().depth}); edm_unet residual blocks per stage (default 2)")
+    parser.add_argument("--base_channels", type=int, help="Convolutional stem channels; multiple of 32 (edm_unet default 128, hybrid defaults to width/4)")
     parser.add_argument("--heads", type=int, default=8)
     parser.add_argument("--patch_size", type=int, choices=(2, 4, 8), default=4)
     parser.add_argument("--knots", type=float, nargs=3, default=(0.25, 0.5, 0.75))
