@@ -30,7 +30,8 @@ Each category is evaluated with exactly 20 generated images.
 ## Environment Setup
 
 The added EDM teacher implementation, training commands, monitoring, guidance
-sweep, and distillation APIs are documented in [TEACHER.md](TEACHER.md).
+sweep, and distillation APIs are documented in [V1 teacher guide](docs/teacher-v1.md).
+The independent V2 implementation is in [teacher_v2/](teacher_v2/README.md).
 The teacher is trained from scratch; the 1-NFE and few-NFE students will be
 implemented separately during distillation.
 

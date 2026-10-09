@@ -4,7 +4,7 @@ The teacher uses the official NVlabs DDPM++ (`SongUNet`) backbone with EDM
 preconditioning, log-normal noise sampling, weighted denoising MSE, and the
 Karras Euler/Heun sampler. It is randomly initialized; no pretrained generation
 model is used. Source attribution, adaptation details, and license are in
-[`src/edm/NOTICE.md`](src/edm/NOTICE.md).
+[`src/edm/NOTICE.md`](../src/edm/NOTICE.md).
 
 The default is a 64x64 RGB, 151-category teacher with base width 96, multipliers
 `[1,2,2,2]`, four residual blocks per resolution, attention at 16x16, dropout
@@ -22,6 +22,28 @@ work. Teacher checkpoints are intentionally separate from `one_nfe.ckpt` and
 
 Use the provided environment and requirements. No added runtime dependencies
 are needed. Run on the course CUDA GPU:
+
+For `uv`, this repository uses `requirements.txt` rather than `pyproject.toml`:
+
+```bash
+uv venv --python 3.10 .venv
+uv pip install --python .venv/bin/python -r requirements.txt torch==2.6.0 torchvision==0.21.0
+uv run python -m unittest discover -s tests -v
+```
+
+On the course Linux CUDA 12.4 host, install the CUDA builds first, then the
+remaining provided dependencies:
+
+```bash
+uv venv --python 3.10 .venv
+uv pip install --python .venv/bin/python torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cu124
+uv pip install --python .venv/bin/python -r requirements.txt
+uv run train_teacher.py --outdir checkpoints/teacher
+```
+
+macOS has no CUDA; use the local environment for tests. Full training with the
+default BF16/CUDA settings requires the NVIDIA GPU. `uv add` is not applicable
+without a `pyproject.toml`.
 
 ```bash
 python train_teacher.py --outdir checkpoints/teacher
