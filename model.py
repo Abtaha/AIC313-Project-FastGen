@@ -70,37 +70,38 @@ class Model(nn.Module):
         return model.to(device).eval()
 
 
-
-
-
 class ModelOneNFE(Model):
-    """Student model evaluated with exactly one model function evaluation."""
+    def __init__(self):
+        super().__init__()
+        self.net = UNet()
 
-    def __init__(self, device="cpu", **kwargs):
-        raise NotImplementedError("Implement the one-NFE model constructor.")
+    @torch.no_grad()
+    def sample(self, num_samples, device="cuda", **kwargs):
+        # NFE = 1: A single Euler step from t=0 to t=1
+        x = torch.randn(num_samples, 3, 64, 64, device=device)
+        t = torch.zeros(num_samples, device=device)
 
-    def sample(
-        self,
-        shape: tuple[int, ...],
-        *,
-        device: torch.device | str = "cuda",
-        category: torch.Tensor | None = None,
-        **kwargs,
-    ) -> torch.Tensor:
-        raise NotImplementedError("Implement sample() in ModelOneNFE.")
+        v = self.net(x, t)
+        x_1 = x + v * 1.0  # step size of 1.0
+
+        return torch.clamp(x_1, -1, 1)
 
 
 class ModelFewNFE(Model):
-    """Student model evaluated with no more than four model evaluations."""
+    def __init__(self):
+        super().__init__()
+        self.net = UNet()
 
-    def __init__(self, device="cpu", **kwargs):
-        raise NotImplementedError("Implement the few-NFE model constructor.")
-    def sample(
-        self,
-        shape: tuple[int, ...],
-        *,
-        device: torch.device | str = "cuda",
-        category: torch.Tensor | None = None,
-        **kwargs,
-    ) -> torch.Tensor:
-        raise NotImplementedError("Implement sample() in ModelFewNFE.")
+    @torch.no_grad()
+    def sample(self, num_samples, device="cuda", **kwargs):
+        # NFE = 4: Four Euler steps from t=0 to t=1
+        steps = 4
+        dt = 1.0 / steps
+        x = torch.randn(num_samples, 3, 64, 64, device=device)
+
+        for i in range(steps):
+            t = torch.full((num_samples,), i * dt, device=device)
+            v = self.net(x, t)
+            x = x + v * dt
+
+        return torch.clamp(x, -1, 1)
