@@ -77,7 +77,8 @@ class ModelOneNFE(Model):
     """Student model evaluated with exactly one model function evaluation."""
 
     def __init__(self, device="cpu", **kwargs):
-        raise NotImplementedError("Implement the one-NFE model constructor.")
+        from distillation.model import ConsistencyStudent
+        super().__init__(ConsistencyStudent(**kwargs).to(device))
 
     def sample(
         self,
@@ -87,14 +88,15 @@ class ModelOneNFE(Model):
         category: torch.Tensor | None = None,
         **kwargs,
     ) -> torch.Tensor:
-        raise NotImplementedError("Implement sample() in ModelOneNFE.")
+        return self.backbone.sample(shape, device=device, category=category, nfe=1, **kwargs)
 
 
 class ModelFewNFE(Model):
     """Student model evaluated with no more than four model evaluations."""
 
     def __init__(self, device="cpu", **kwargs):
-        raise NotImplementedError("Implement the few-NFE model constructor.")
+        from distillation.model import ConsistencyStudent
+        super().__init__(ConsistencyStudent(**kwargs).to(device))
     def sample(
         self,
         shape: tuple[int, ...],
@@ -103,4 +105,4 @@ class ModelFewNFE(Model):
         category: torch.Tensor | None = None,
         **kwargs,
     ) -> torch.Tensor:
-        raise NotImplementedError("Implement sample() in ModelFewNFE.")
+        return self.backbone.sample(shape, device=device, category=category, nfe=4, **kwargs)
