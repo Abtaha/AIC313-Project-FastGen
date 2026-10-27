@@ -71,11 +71,17 @@ def sample_grid(model, cache, path, device):
     save_image((torch.cat(images)+1)/2, path, nrow=4)
 
 
-def report_fid(args, output, device):
+def report_fid(args, output, device, *, checkpoint=None, mode=None,
+               selection="synthetic-heldout-matching-loss"):
     # Reuse the official image conversion, 20/class sampling, and pooled CleanFID.
     from dataset import PokemonDataModule
     from evaluate import prepare_reference_set, evaluate
-    model = LearnedSampler.load_checkpoint(output / "best.ckpt", device=device)
+    checkpoint = checkpoint or output / "best.ckpt"
+    if mode is None:
+        model = LearnedSampler.load_checkpoint(checkpoint, device=device)
+    else:
+        from model import Model
+        model = Model.load_checkpoint(checkpoint, evaluate_mode=mode, device=device)
     module = PokemonDataModule(data_root=args.data_root, split_dir=args.split_dir,
                                batch_size=args.microbatch, num_workers=2)
     if module.category_to_id != torch.load(args.cache, weights_only=True)["identity"]["category_to_id"]:
@@ -88,9 +94,10 @@ def report_fid(args, output, device):
             raise ValueError("Expected full balanced official validation reference")
         score = evaluate(model, reference, Path(directory) / "generated", categories,
                          batch_size=args.microbatch, device=device)
-    row = {"competition_fid": score, "nfe": args.nfe, "guidance": args.guidance,
+    row = {"competition_fid": score, "nfe": args.nfe,
+           "guidance": args.guidance if mode is None else 1.0, "teacher_guidance": args.guidance,
            "method": args.method, "seed": args.seed+10000,
-           "checkpoint_selection": "synthetic-heldout-matching-loss", "fid_count": len(categories)}
+           "checkpoint_selection": selection, "fid_count": len(categories)}
     (output / "fid.json").write_text(json.dumps(row, indent=2)+"\n")
     print(json.dumps(row), flush=True)
 

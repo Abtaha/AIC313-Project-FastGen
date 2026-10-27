@@ -43,7 +43,7 @@ uv run python -m distillation.train \
 
 Outputs are `stats.jsonl`, configuration/provenance, sample grids at both NFE
 budgets, an inference-only `student.ckpt`, and resumable `training-state.pt`.
-Only the latest checkpoints are retained to limit disk use. To extend a run,
+Full training state is latest-only; inference snapshots are retained at save intervals. To extend a run,
 repeat its command with the same outdir and recipe, a larger `--steps`, and
 `--resume <outdir>/training-state.pt`. RNG and optimizer state are restored;
 prefetching and restarting the data iterator mean sample order is not exactly
@@ -160,4 +160,72 @@ are separate from the consistency student checkpoints expected by the current
 
 ```bash
 uv run python -m unittest distillation.test_schedulers
+```
+
+## Consistency refinements and one-pass DMD
+
+Consistency training now also retains inference-only snapshots under
+`snapshots/student-<step>.ckpt` at save intervals. Full optimizer checkpoints
+remain latest-only. Existing checkpoints load unchanged: missing sampling-grid buffers receive
+the original Karras grid, without changing network weights or the base `Model`.
+
+`tune_schedule.py` compares eight four-pass grids on the fitting portion of the
+existing synthetic teacher cache. Re-noising draws are fixed across candidates.
+Selection uses fitting-pair multiscale L2; held-out synthetic matching scores are
+reported separately. This objective may favor smooth images and does not
+guarantee lower FID, so the original inference checkpoint is preserved. The grid
+is stored as a non-parameter buffer in the exported `few_nfe.ckpt`; the unchanged
+competition loader and four-pass adapter load it automatically. No extra network
+call or inference CFG is introduced.
+
+```bash
+uv run python -m distillation.tune_schedule \
+  --student results/consistency-eval-step1000/student.ckpt \
+  --cache checkpoints/scheduler-targets-g2.pt \
+  --outdir checkpoints/consistency-schedule-step1000 --report-fid
+```
+
+`dmd.py` is a separate **adapted DMD pilot**, based on
+[One-step Diffusion with Distribution Matching Distillation](https://arxiv.org/abs/2311.18828),
+Yin et al., CVPR 2024. The generator starts from our local consistency checkpoint.
+A fake-score EDM denoiser initialized from our V1 teacher learns the changing
+generator distribution. The frozen real-score teacher uses CFG; the fake score
+is conditional without CFG. With additive EDM noise, the paper's equations 7/8
+give the generator gradient `(D_fake-D_real)/mean(abs(x-D_real))`; the denominator
+has a 0.01 floor. A detached-target surrogate injects that gradient without
+differentiating through either score estimate. Its scalar value is not a KL
+estimate. A separate paired regression stream anchors noise/image correspondence.
+
+Adaptations: multiscale L2 regression replaces LPIPS; generator initialization is
+our consistency student; generator-score noise uses the teacher's lognormal EDM
+distribution truncated to [0.05,20], rather than the paper's discrete timestep
+sampling. Fake-score training uses the original weighted EDM denoising loss.
+Defaults: generator LR 5e-6, fake-score LR 1e-4, regression coefficient 0.25,
+50 fake-score-only warmup updates, batch 64, microbatch 8, 2,000 pilot updates.
+Fresh Gaussian noise and uniform labels drive the distribution term. Only the
+fitting cache pairs drive regression. No official validation image is loaded
+during optimization; optional final FID reports the predetermined last checkpoint.
+
+Generator plus auxiliary fake-score parameters total 69,597,510. The separate
+frozen teacher has 34,798,755 parameters. **No generator EMA** is added, because
+an additional full generator copy would push that framework beyond 100M. Only
+the generator is exported in `one_nfe.ckpt`, with 34,798,755 parameters and exactly
+one inference call. The original consistency checkpoint remains independent.
+
+```bash
+uv run python -m distillation.dmd \
+  --teacher /root/teacher.ckpt \
+  --student results/consistency-eval-step1000/student.ckpt \
+  --cache checkpoints/scheduler-targets-g2.pt \
+  --outdir checkpoints/dmd-one-step1000 --steps 2000 --report-fid
+```
+
+DMD saves resumable generator/fake-score/optimizer/RNG state plus generator-only
+snapshots, fixed-noise sample grids, and latest `one_nfe.ckpt`. Resume into the
+same outdir with the same recipe and `--resume <outdir>/training-state.pt`.
+Its convergence and benefit remain experimental; compare final metrics and
+diversity rather than relying on the surrogate loss.
+
+```bash
+uv run python -m unittest distillation.test_dmd
 ```

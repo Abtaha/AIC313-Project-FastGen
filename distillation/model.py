@@ -19,6 +19,35 @@ class ConsistencyStudent(nn.Module):
         self.config = replace(config or TeacherConfig(), dropout=0.0, label_dropout=0.0)
         # Reuse architecture construction/validation; retain only its backbone.
         self.backbone = EDMTeacher(self.config).backbone
+        c = self.config
+        ramp = torch.arange(4, dtype=torch.float32) / 4
+        self.register_buffer("four_sigmas", (c.sigma_max**(1/c.rho) + ramp *
+            (c.sigma_min**(1/c.rho)-c.sigma_max**(1/c.rho))) ** c.rho)
+
+    def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
+        # Original consistency checkpoints predate the persistent sampling grid.
+        if prefix + "four_sigmas" not in state_dict:
+            state_dict[prefix + "four_sigmas"] = self.four_sigmas.clone()
+        super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
+
+    @torch.no_grad()
+    def set_four_sigmas(self, values):
+        values = torch.as_tensor(values, dtype=torch.float32, device=self.four_sigmas.device)
+        c = self.config
+        if values.shape != (4,) or not torch.isfinite(values).all() or not torch.all(values[:-1] > values[1:]):
+            raise ValueError("Four finite strictly decreasing noise levels required")
+        if not torch.isclose(values[0], values.new_tensor(c.sigma_max)) or values[-1] < c.sigma_min:
+            raise ValueError("Grid must start at sigma_max and stay >= sigma_min")
+        self.four_sigmas.copy_(values)
+
+    @classmethod
+    def load_checkpoint(cls, path, device="cpu"):
+        data = torch.load(path, map_location="cpu", weights_only=True)
+        if data.get("format") != "fastgen-consistency-v1":
+            raise ValueError("Expected an exported consistency/DMD student checkpoint")
+        model = cls(TeacherConfig(**data["config"]))
+        model.load_state_dict({k.removeprefix("backbone."): v for k, v in data["state_dict"].items()})
+        return model.to(device).eval()
 
     @classmethod
     def from_teacher(cls, teacher):
@@ -49,6 +78,8 @@ class ConsistencyStudent(nn.Module):
     def sampling_sigmas(self, nfe, *, device):
         if nfe not in (1, 4):
             raise ValueError("Student sampling supports exactly 1 or 4 NFE")
+        if nfe == 4:
+            return self.four_sigmas.to(device)
         c = self.config
         # Four positive levels; zero is never passed to the log-noise embedding.
         ramp = torch.arange(nfe, device=device, dtype=torch.float32) / nfe

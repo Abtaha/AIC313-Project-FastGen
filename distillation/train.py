@@ -173,7 +173,11 @@ def train(args):
                 save_image((samples + 1) / 2, output / f"samples-{step:06d}-{nfe}nfe.png", nrow=4)
             check_memory(device, args.memory_limit_gb)
         if step % args.save_every == 0 or step == args.steps:
-            atomic_save(target.export(category_to_id=mapping, step=step, guidance=args.guidance), output / "student.ckpt")
+            exported = target.export(category_to_id=mapping, step=step, guidance=args.guidance)
+            atomic_save(exported, output / "student.ckpt")
+            snapshots = output / "snapshots"
+            snapshots.mkdir(exist_ok=True)
+            atomic_save(exported, snapshots / f"student-{step:06d}.ckpt")
             atomic_save({"format": "fastgen-consistency-training-v1", "identity": identity,
                 "step": step, "student": student.state_dict(), "target": target.state_dict(),
                 "optimizer": optimizer.state_dict(), "elapsed_seconds": elapsed_before + time.monotonic() - clock,
