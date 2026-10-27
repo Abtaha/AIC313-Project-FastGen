@@ -105,7 +105,8 @@ def train(args):
     if args.memory_fraction is not None:
         if device.type != "cuda" or not 0 < args.memory_fraction <= 1:
             raise ValueError("Memory fraction requires CUDA and a value in (0,1]")
-        torch.cuda.set_per_process_memory_fraction(args.memory_fraction, device)
+        index = device.index if device.index is not None else torch.cuda.current_device()
+        torch.cuda.set_per_process_memory_fraction(args.memory_fraction, index)
     torch.manual_seed(args.seed)
     if device.type == "cuda":
         torch.cuda.manual_seed_all(args.seed)
