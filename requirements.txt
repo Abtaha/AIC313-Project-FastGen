@@ -4,3 +4,4 @@ torch
 torchvision
 clean-fid
 tqdm
+scipy==1.13.1
