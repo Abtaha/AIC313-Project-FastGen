@@ -51,8 +51,18 @@ def gradient_surrogate(images, gradient):
     return 0.5 * (images - (images.detach()-gradient).detach()).square().mean()
 
 
+def compatible_identity(saved, requested, *, fork=False):
+    """Old checkpoints imply 1:1. Forking may change only the update ratio."""
+    saved = {**saved, "recipe": {"fake_updates": 1, **saved["recipe"]}}
+    requested = {**requested, "recipe": {"fake_updates": 1, **requested["recipe"]}}
+    if fork:
+        saved["recipe"].pop("fake_updates")
+        requested["recipe"].pop("fake_updates")
+    return saved == requested
+
+
 def train(args):
-    if min(args.steps, args.batch_size, args.microbatch, args.save_every, args.log_every) < 1 or args.batch_size % args.microbatch:
+    if min(args.steps, args.batch_size, args.microbatch, args.save_every, args.log_every, args.fake_updates) < 1 or args.batch_size % args.microbatch:
         raise ValueError("Positive intervals required; microbatch must divide batch-size")
     if min(args.lr, args.fake_lr) <= 0 or args.reg_weight <= 0 or args.score_warmup < 0:
         raise ValueError("Positive rates/regression weight and nonnegative warmup required")
@@ -92,13 +102,14 @@ def train(args):
         raise ValueError("Generator including auxiliary fake score or teacher exceeds 100M")
     identity = {"teacher_sha256": teacher_hash, "student_sha256": file_hash(args.student),
                 "cache_sha256": file_hash(args.cache), "recipe": {k: getattr(args,k) for k in (
-                    "guidance", "lr", "fake_lr", "reg_weight", "score_warmup", "batch_size", "amp", "seed")}}
+                    "guidance", "lr", "fake_lr", "reg_weight", "score_warmup", "batch_size", "amp", "seed", "fake_updates")}}
     optimizer = torch.optim.Adam(generator.parameters(), lr=args.lr, betas=(.9,.999))
     fake_optimizer = torch.optim.Adam(fake.parameters(), lr=args.fake_lr, betas=(.9,.999))
     start = 0
-    if args.resume:
-        state = torch.load(args.resume, map_location="cpu", weights_only=True)
-        if state["identity"] != identity:
+    restore = args.resume or args.fork_from
+    if restore:
+        state = torch.load(restore, map_location="cpu", weights_only=True)
+        if not compatible_identity(state["identity"], identity, fork=bool(args.fork_from)):
             raise ValueError("Resume recipe differs")
         generator.load_state_dict(state["generator"])
         fake.load_state_dict(state["fake"])
@@ -114,13 +125,15 @@ def train(args):
     (output/"config.json").write_text(json.dumps({**identity, "arguments": vars(args),
         "framework_parameters": framework_parameters, "teacher_parameters": teacher.num_parameters,
         "generator_ema": False, "validation_loaded_for_training": False,
+        "fork_parent": args.fork_from, "fork_parent_sha256": file_hash(args.fork_from) if args.fork_from else None,
         "adaptations": "consistency initialization; lognormal EDM sigma .05..20; multiscale L2 regression"}, indent=2)+"\n")
     if not args.resume:
-        atomic_save(generator.export(category_to_id=mapping, step=0, guidance=args.guidance), output/"initial.ckpt")
+        atomic_save(generator.export(category_to_id=mapping, step=start, guidance=args.guidance), output/"initial.ckpt")
     fit = (~cache["heldout"]).nonzero().flatten()
     c = generator.config
     clock = time.monotonic()
-    print(f"DMD: generator + fake score {framework_parameters:,}; separate teacher {teacher.num_parameters:,}; no EMA", flush=True)
+    print(f"DMD: generator + fake score {framework_parameters:,}; separate teacher {teacher.num_parameters:,}; "
+          f"no EMA; {args.fake_updates} fake-score updates per generator update; start step {start}", flush=True)
     for step in range(start+1, args.steps+1):
         optimizer.zero_grad(set_to_none=True)
         generated, dm_total, reg_total = [], 0.0, 0.0
@@ -146,20 +159,23 @@ def train(args):
         if step > args.score_warmup:
             optimizer.step()
         optimizer.zero_grad(set_to_none=True)
-        fake_optimizer.zero_grad(set_to_none=True)
         fake_total = 0.0
-        for images, labels in generated:
-            with torch.autocast(device_type=device.type, dtype=torch.bfloat16, enabled=args.amp=="bf16"):
-                loss = fake.loss(images.float(),labels)
-            if not torch.isfinite(loss):
-                raise FloatingPointError("Nonfinite fake-score loss")
-            (loss*args.microbatch/args.batch_size).backward()
-            fake_total += float(loss.detach())*args.microbatch/args.batch_size
-        torch.nn.utils.clip_grad_norm_(fake.parameters(),1.0,error_if_nonfinite=True)
-        fake_optimizer.step()
+        for _ in range(args.fake_updates):
+            fake_optimizer.zero_grad(set_to_none=True)
+            # Reuse the detached generated batch, with fresh EDM corruption on
+            # every critic update. Generator and teacher receive no gradients.
+            for images, labels in generated:
+                with torch.autocast(device_type=device.type, dtype=torch.bfloat16, enabled=args.amp=="bf16"):
+                    loss = fake.loss(images.float(),labels)
+                if not torch.isfinite(loss):
+                    raise FloatingPointError("Nonfinite fake-score loss")
+                (loss*args.microbatch/args.batch_size).backward()
+                fake_total += float(loss.detach())*args.microbatch/args.batch_size/args.fake_updates
+            torch.nn.utils.clip_grad_norm_(fake.parameters(),1.0,error_if_nonfinite=True)
+            fake_optimizer.step()
         check_memory(device,args.memory_limit_gb)
         if step == start+1 or step % args.log_every == 0:
-            row = {"step":step,"dm_surrogate":dm_total,"reg_loss":reg_total,"fake_loss":fake_total,
+            row = {"step":step,"dm_surrogate":dm_total,"reg_loss":reg_total,"fake_loss":fake_total,"fake_updates":args.fake_updates,
                    "grad_norm":float(norm),"elapsed_seconds":time.monotonic()-clock,
                    "peak_allocated_gb":torch.cuda.max_memory_allocated(device)/1e9 if device.type=="cuda" else 0}
             print(json.dumps(row),flush=True)
@@ -195,6 +211,7 @@ def parser():
     p.add_argument("--microbatch",type=int,default=8)
     p.add_argument("--lr",type=float,default=5e-6)
     p.add_argument("--fake-lr",type=float,default=1e-4)
+    p.add_argument("--fake-updates",type=int,default=1)
     p.add_argument("--guidance",type=float,default=2.0)
     p.add_argument("--reg-weight",type=float,default=.25)
     p.add_argument("--score-warmup",type=int,default=50)
@@ -205,7 +222,9 @@ def parser():
     p.add_argument("--seed",type=int,default=789)
     p.add_argument("--log-every",type=int,default=25)
     p.add_argument("--save-every",type=int,default=500)
-    p.add_argument("--resume")
+    restore = p.add_mutually_exclusive_group()
+    restore.add_argument("--resume")
+    restore.add_argument("--fork-from")
     p.add_argument("--report-fid",action="store_true")
     p.add_argument("--data-root",default="data/pokemon-generation-one-22k")
     p.add_argument("--split-dir",default="data/pokemon-generation-one-22k")

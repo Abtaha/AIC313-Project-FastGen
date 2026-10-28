@@ -10,7 +10,7 @@ import torch
 from teacher import EDMTeacher, TeacherConfig
 from model import Model
 from .model import ConsistencyStudent
-from .dmd import distribution_gradient, gradient_surrogate, parser, train
+from .dmd import distribution_gradient, gradient_surrogate, parser, train, compatible_identity
 from .tune_schedule import parser as schedule_parser, run as tune
 
 
@@ -46,6 +46,16 @@ class DMDTests(unittest.TestCase):
         # Gradient descent must increase x toward real=1, not toward fake=0.
         self.assertTrue((x.grad<0).all())
         torch.testing.assert_close(x.grad,gradient/x.numel())
+
+    def test_identity_only_allows_ratio_change_when_forking(self):
+        legacy = {'teacher_sha256':'a','recipe':{'lr':1e-4}}
+        current = {'teacher_sha256':'a','recipe':{'lr':1e-4,'fake_updates':1}}
+        changed = {'teacher_sha256':'a','recipe':{'lr':1e-4,'fake_updates':3}}
+        self.assertTrue(compatible_identity(legacy,current))
+        self.assertFalse(compatible_identity(legacy,changed))
+        self.assertTrue(compatible_identity(legacy,changed,fork=True))
+        self.assertFalse(compatible_identity(legacy,{'teacher_sha256':'b','recipe':changed['recipe']},fork=True))
+        self.assertNotIn('fake_updates',legacy['recipe'])
 
     def test_grid_persists_and_old_checkpoints_load(self):
         student = ConsistencyStudent.from_teacher(self.teacher()).eval()
@@ -86,6 +96,16 @@ class DMDTests(unittest.TestCase):
             args.resume, args.steps = str(root/'dmd'/'training-state.pt'),2
             train(args)
             self.assertEqual(torch.load(args.resume,weights_only=True)['step'],2)
+            parent = Path(args.resume)
+            parent_hash = hashlib.sha256(parent.read_bytes()).hexdigest()
+            args.resume, args.fork_from, args.outdir = None, str(parent), str(root/'dmd-three')
+            args.steps, args.fake_updates = 3, 3
+            train(args)
+            fork = torch.load(root/'dmd-three'/'training-state.pt',weights_only=True)
+            # Parent had two fake updates; the new generator step adds three.
+            self.assertEqual(int(next(iter(fork['fake_optimizer']['state'].values()))['step']),5)
+            self.assertEqual(int(next(iter(fork['optimizer']['state'].values()))['step']),3)
+            self.assertEqual(hashlib.sha256(parent.read_bytes()).hexdigest(),parent_hash)
             tune_args = schedule_parser().parse_args(['--student',str(initial),'--cache',str(cache),
                 '--outdir',str(root/'schedule'),'--device','cpu','--microbatch','2'])
             tune(tune_args)

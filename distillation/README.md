@@ -229,3 +229,32 @@ diversity rather than relying on the surrogate loss.
 ```bash
 uv run python -m unittest distillation.test_dmd
 ```
+
+### Isolated fake-score update-ratio ablation
+
+`--fake-updates` defaults to 1, preserving the control recipe. Setting it to 3
+performs three fake-score optimizer steps for each generator step. These steps
+reuse the current detached image batch with fresh sigma/noise corruptions. The
+regression anchor, model architecture, batch size, learning rates, and one-call
+inference remain unchanged. This tests one DMD2-inspired idea, not full DMD2:
+[Improved Distribution Matching Distillation](https://arxiv.org/abs/2405.14867).
+
+`--fork-from` restores generator, fake score, both optimizers, and RNG from a
+preserved full state into a **new empty outdir**. Only the fake-update ratio may
+differ from that parent's recipe. `--resume` requires the original outdir and
+exact recipe. Old checkpoints without a recorded ratio are treated as 1:1.
+Step counts remain absolute: forking from 5k to `--steps 7000` adds 2k updates.
+
+```bash
+uv run python -m distillation.dmd \
+  --teacher /root/teacher.ckpt \
+  --student results/consistency-eval-step1000/student.ckpt \
+  --cache checkpoints/scheduler-targets-g2.pt \
+  --fork-from results/student-refinement/pilot-step5000/training-state.pt \
+  --outdir checkpoints/dmd-critic3-from5000 \
+  --fake-updates 3 --steps 7000 --report-fid
+```
+
+Compare with the original 1:1 run's preserved 7k snapshot using identical
+evaluation seed and batch. Compare equal generator updates and report the extra
+training cost; the 3:1 branch intentionally uses more fake-score computation.
