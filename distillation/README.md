@@ -240,8 +240,10 @@ inference remain unchanged. This tests one DMD2-inspired idea, not full DMD2:
 [Improved Distribution Matching Distillation](https://arxiv.org/abs/2405.14867).
 
 `--fork-from` restores generator, fake score, both optimizers, and RNG from a
-preserved full state into a **new empty outdir**. Only the fake-update ratio may
-differ from that parent's recipe. `--resume` requires the original outdir and
+preserved full state into a **new empty outdir**. Either the fake-update ratio or
+generator LR may differ from that parent's recipe, one factor at a time. LR
+forks retain Adam moments and counters while applying the requested rate.
+`--resume` requires the original outdir and
 exact recipe. Old checkpoints without a recorded ratio are treated as 1:1.
 Step counts remain absolute: forking from 5k to `--steps 7000` adds 2k updates.
 
@@ -305,3 +307,10 @@ regression from `.25` to `.025`. All phase lengths and settings are fixed in
 advance; validation is only loaded by endpoint reporting. Log GAN losses,
 discriminator accuracies, output standard deviation, and saturation alongside
 the existing losses to monitor instability using training data.
+
+For the controlled follow-ups, fork the preserved full stage-1 state at 2k into
+two separate directories, each ending at 5k like the stage-2 control. Change
+only `--fake-updates 5` in one, and only `--lr 2e-6` in the other. Keep GAN
+settings, regression, fake LR, batch size, source state, and evaluation seed
+unchanged. The ratio experiment has higher critic compute at equal generator
+updates. Report all fixed endpoints; validation FID does not control budgets.

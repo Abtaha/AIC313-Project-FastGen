@@ -53,12 +53,15 @@ def gradient_surrogate(images, gradient):
 
 
 def compatible_identity(saved, requested, *, fork=False):
-    """Old checkpoints imply 1:1. Forking may change only the update ratio."""
+    """Forks may change either generator LR or update ratio, one at a time."""
     saved = {**saved, "recipe": {"fake_updates": 1, **saved["recipe"]}}
     requested = {**requested, "recipe": {"fake_updates": 1, **requested["recipe"]}}
     if fork:
-        saved["recipe"].pop("fake_updates")
-        requested["recipe"].pop("fake_updates")
+        differences = 0
+        for key in ("fake_updates", "lr"):
+            differences += saved["recipe"].pop(key) != requested["recipe"].pop(key)
+        if differences > 1:
+            return False
     return saved == requested
 
 
@@ -133,6 +136,10 @@ def train(args):
             head.load_state_dict(state["gan_head"])
         optimizer.load_state_dict(state["optimizer"])
         fake_optimizer.load_state_dict(state["fake_optimizer"])
+        if args.fork_from:
+            # Keep Adam moments/counters, but apply the requested fork LR.
+            for group in optimizer.param_groups:
+                group["lr"] = args.lr
         start = state["step"]
         torch.set_rng_state(state["rng_cpu"])
         if device.type == "cuda":

@@ -56,6 +56,10 @@ class DMDTests(unittest.TestCase):
         self.assertTrue(compatible_identity(legacy,current))
         self.assertFalse(compatible_identity(legacy,changed))
         self.assertTrue(compatible_identity(legacy,changed,fork=True))
+        low_lr = {'teacher_sha256':'a','recipe':{'lr':2e-5,'fake_updates':1}}
+        self.assertTrue(compatible_identity(legacy,low_lr,fork=True))
+        self.assertFalse(compatible_identity(legacy,low_lr))
+        self.assertFalse(compatible_identity(legacy,{'teacher_sha256':'a','recipe':{'lr':2e-5,'fake_updates':3}},fork=True))
         self.assertFalse(compatible_identity(legacy,{'teacher_sha256':'b','recipe':changed['recipe']},fork=True))
         self.assertNotIn('fake_updates',legacy['recipe'])
 
@@ -166,6 +170,13 @@ class DMDTests(unittest.TestCase):
             self.assertEqual(int(next(iter(fork['fake_optimizer']['state'].values()))['step']),5)
             self.assertEqual(int(next(iter(fork['optimizer']['state'].values()))['step']),3)
             self.assertEqual(hashlib.sha256(parent.read_bytes()).hexdigest(),parent_hash)
+            args.fork_from = str(root/'dmd-three/training-state.pt')
+            args.outdir, args.steps, args.lr = str(root/'dmd-low-lr'), 4, 2e-6
+            train(args)
+            lower = torch.load(root/'dmd-low-lr/training-state.pt',weights_only=True)
+            self.assertEqual(lower['optimizer']['param_groups'][0]['lr'],2e-6)
+            self.assertEqual(int(next(iter(lower['optimizer']['state'].values()))['step']),4)
+            self.assertEqual(lower['fake_optimizer']['param_groups'][0]['lr'],args.fake_lr)
             tune_args = schedule_parser().parse_args(['--student',str(initial),'--cache',str(cache),
                 '--outdir',str(root/'schedule'),'--device','cpu','--microbatch','2'])
             tune(tune_args)
