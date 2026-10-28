@@ -4,6 +4,7 @@ import hashlib
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import torch
 
@@ -12,6 +13,7 @@ from model import Model
 from .model import ConsistencyStudent
 from .dmd import distribution_gradient, gradient_surrogate, parser, train, compatible_identity
 from .tune_schedule import parser as schedule_parser, run as tune
+from .adversarial import GANHead, bottleneck_features, frozen_parameters
 
 
 class ConstantDenoiser(torch.nn.Module):
@@ -56,6 +58,64 @@ class DMDTests(unittest.TestCase):
         self.assertTrue(compatible_identity(legacy,changed,fork=True))
         self.assertFalse(compatible_identity(legacy,{'teacher_sha256':'b','recipe':changed['recipe']},fork=True))
         self.assertNotIn('fake_updates',legacy['recipe'])
+
+    def test_gan_features_and_gradient_isolation(self):
+        fake = self.teacher()
+        fake.requires_grad_(True)
+        labels = torch.tensor([0, 2])
+        images, sigma = torch.randn(2,3,8,8), torch.tensor([.2, 1.])
+        captured = []
+        hook = fake.backbone.dec['4x4_in1'].register_forward_hook(lambda m, a, output: captured.append(output))
+        fake(images, sigma, labels)
+        hook.remove()
+        torch.testing.assert_close(bottleneck_features(fake, images, sigma, labels), captured[0], rtol=0, atol=0)
+        head = GANHead(fake.config)
+        x = images.clamp(-.8,.8).requires_grad_()
+        with frozen_parameters(fake, head):
+            loss = torch.nn.functional.softplus(-head(fake, x, labels, sigma=sigma, noise=torch.zeros_like(x))).mean()
+        loss.backward()
+        self.assertGreater(float(x.grad.abs().sum()), 0)
+        self.assertTrue(all(p.grad is None for p in list(fake.parameters())+list(head.parameters())))
+        detached = x.detach()
+        torch.nn.functional.softplus(head(fake, detached, labels)).mean().backward()
+        self.assertTrue(any(p.grad is not None for p in fake.parameters()))
+        self.assertTrue(any(p.grad is not None for p in head.parameters()))
+
+    def test_gan_transition_resume_and_training_only_data(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            teacher = self.teacher()
+            mapping = {'a':0,'b':1,'c':2}
+            base, initial, cache = root/'teacher.ckpt',root/'student.ckpt',root/'cache.pt'
+            torch.save({**teacher.checkpoint(),'category_to_id':mapping},base)
+            torch.save(ConsistencyStudent.from_teacher(teacher).export(category_to_id=mapping,step=2000,guidance=2),initial)
+            labels = torch.tensor([0,0,1,1,2,2])
+            torch.save({'identity':{'category_to_id':mapping,'teacher_sha256':hashlib.sha256(base.read_bytes()).hexdigest(),
+                'guidance':2.},'latents':torch.randn(6,3,8,8),'targets':torch.randn(6,3,8,8),
+                'labels':labels,'heldout':torch.tensor([False,True]*3)},cache)
+            (root/'train_split.txt').write_text('train-only fixture\n')
+            dataset = torch.utils.data.TensorDataset(torch.randn(6,3,8,8).clamp(-1,1),labels)
+            dataset.category_ids = labels.tolist()
+            args = parser().parse_args(['--teacher',str(base),'--student',str(initial),'--cache',str(cache),
+                '--outdir',str(root/'gan'),'--split-dir',str(root),'--steps','1','--batch-size','2','--microbatch','1',
+                '--device','cpu','--amp','none','--score-warmup','0','--gan-start','1','--gan-weight','.003'])
+            with patch('distillation.adversarial.PokemonDataset', return_value=dataset) as load:
+                train(args)
+                before=torch.load(root/'gan/training-state.pt',weights_only=True)
+                args.resume,args.steps=str(root/'gan/training-state.pt'),2
+                train(args)
+                self.assertEqual(load.call_args.args[1],root/'train_split.txt')
+            after=torch.load(args.resume,weights_only=True)
+            self.assertTrue(any(not torch.equal(v,after['gan_head'][k]) for k,v in before['gan_head'].items()))
+            self.assertEqual(after['step'],2)
+            self.assertTrue(torch.isfinite(torch.tensor([float(p.abs().max()) for p in after['generator'].values()])).all())
+            exported=torch.load(root/'gan/one_nfe.ckpt',weights_only=True)
+            self.assertFalse(any('gan' in key for key in exported['state_dict']))
+            self.assertEqual(exported['training_recipe'],'DMD2-inspired-gan-v1')
+            import json
+            stats=[json.loads(line) for line in (root/'gan/stats.jsonl').read_text().splitlines()]
+            self.assertEqual([row['gan_active'] for row in stats],[False,True])
+            self.assertEqual(stats[-1]['reg_weight'],.025)
 
     def test_grid_persists_and_old_checkpoints_load(self):
         student = ConsistencyStudent.from_teacher(self.teacher()).eval()

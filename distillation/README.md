@@ -271,3 +271,37 @@ For the fixed refinement experiment, use the original 9k snapshot, LR `2e-5`,
 `--warmup-steps 0`, batch 128, and the existing guidance/EMA/loss settings. Train
 for the predetermined 2k budget, then report final FID with seed 0 and batch 32.
 Sampling schedules are selected using synthetic training pairs, never FID.
+
+### Stronger initialization and real-image adversarial refinement
+
+The optional `distillation.dmd --gan-weight 0.003 --gan-start 2000
+--gan-reg-weight 0.025` adds a small classifier to the fake SongUNet's middle
+features. It is initialized with the rest of the run, but adversarial training
+begins only **after** step 2000. Before that point the ordinary DMD regression
+weight applies; afterwards the reduced weight applies. A value of zero removes
+regression in that stage. `--gan-weight 0` preserves the original DMD algorithm.
+
+The classifier sees equally noised real and generated RGB images, both bounded
+to the inference range, with horizontal flips. Real images come exclusively
+from `train_split.txt`, sampling classes uniformly and then images uniformly
+within each class. The fake score and head share one optimizer. The generator
+receives a non-saturating GAN gradient through the frozen classifier/encoder;
+only fake-score/discriminator steps update those parameters. Every adversarial
+critic update generates a fresh detached image batch. Exports contain only the
+generator; full resume states include the head and both optimizers. The 100M
+training framework count includes generator, fake score, and the added head.
+
+This is a **DMD2-inspired adaptation**, not an exact reproduction: we retain a
+small multiscale L2 regression anchor and use 3:1 updates with our EDM noise
+distribution. See [DMD2, sections 4.3 and F.1](https://arxiv.org/abs/2405.14867).
+No external pretrained feature network is used.
+
+The first fixed experiment starts from the refined consistency export (2k
+refinement updates from the original 9k weights). It uses generator LR `5e-6`,
+fake LR `1e-4`, batch 64, BF16, and 200 fake-score-only warmup iterations. Run
+to 2k and preserve/evaluate that checkpoint, then resume to 5k regardless of
+the first FID. The second stage enables GAN weight `.003` and reduces paired
+regression from `.25` to `.025`. All phase lengths and settings are fixed in
+advance; validation is only loaded by endpoint reporting. Log GAN losses,
+discriminator accuracies, output standard deviation, and saturation alongside
+the existing losses to monitor instability using training data.

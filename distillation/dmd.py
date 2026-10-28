@@ -12,6 +12,7 @@ from pathlib import Path
 import time
 
 import torch
+from torch.nn import functional as F
 
 from teacher import EDMTeacher
 from .model import ConsistencyStudent
@@ -66,6 +67,8 @@ def train(args):
         raise ValueError("Positive intervals required; microbatch must divide batch-size")
     if min(args.lr, args.fake_lr) <= 0 or args.reg_weight <= 0 or args.score_warmup < 0:
         raise ValueError("Positive rates/regression weight and nonnegative warmup required")
+    if args.gan_weight < 0 or args.gan_reg_weight < 0 or (args.gan_weight and args.gan_start < args.score_warmup):
+        raise ValueError("Nonnegative GAN weights required; GAN must start after score warmup")
     device = torch.device(args.device)
     if args.amp == "bf16" and (device.type != "cuda" or not torch.cuda.is_bf16_supported()):
         raise ValueError("BF16 requires CUDA support; use --amp none on CPU")
@@ -87,6 +90,8 @@ def train(args):
     mapping = source["category_to_id"]
     if mapping != base["category_to_id"] or mapping != cache["identity"]["category_to_id"]:
         raise ValueError("Teacher, student, and cache mappings differ")
+    if source.get("teacher_guidance") != args.guidance:
+        raise ValueError("Student initialization and requested teacher guidance differ")
     teacher_hash = file_hash(args.teacher)
     if cache["identity"]["teacher_sha256"] != teacher_hash or cache["identity"]["guidance"] != args.guidance:
         raise ValueError("Cache teacher or guidance differs")
@@ -96,15 +101,26 @@ def train(args):
         raise ValueError("Teacher and generator configurations differ")
     fake = EDMTeacher(replace(teacher.config, dropout=0, label_dropout=0)).to(device).train()
     fake.backbone.load_state_dict(teacher.backbone.state_dict())
+    head, real_images = None, None
+    if args.gan_weight:
+        from .adversarial import GANHead, BalancedTrainingImages
+        head = GANHead(generator.config).to(device).train()
+        real_images = BalancedTrainingImages(args.data_root, args.split_dir, mapping)
     del source, base
-    framework_parameters = sum(p.numel() for m in [generator, fake] for p in m.parameters())
+    critic_parameters = list(fake.parameters()) + (list(head.parameters()) if head is not None else [])
+    framework_parameters = sum(p.numel() for p in list(generator.parameters()) + critic_parameters)
     if framework_parameters > 100_000_000 or teacher.num_parameters > 100_000_000:
         raise ValueError("Generator including auxiliary fake score or teacher exceeds 100M")
     identity = {"teacher_sha256": teacher_hash, "student_sha256": file_hash(args.student),
                 "cache_sha256": file_hash(args.cache), "recipe": {k: getattr(args,k) for k in (
                     "guidance", "lr", "fake_lr", "reg_weight", "score_warmup", "batch_size", "amp", "seed", "fake_updates")}}
+    if head is not None:
+        identity["recipe"].update({key: getattr(args, key) for key in (
+            "gan_weight", "gan_start", "gan_reg_weight")})
+        identity["gan_train_manifest_sha256"] = file_hash(Path(args.split_dir)/"train_split.txt")
+        identity["adversarial_recipe"] = "noisy-standard-song-middle-128-hflip-v1"
     optimizer = torch.optim.Adam(generator.parameters(), lr=args.lr, betas=(.9,.999))
-    fake_optimizer = torch.optim.Adam(fake.parameters(), lr=args.fake_lr, betas=(.9,.999))
+    fake_optimizer = torch.optim.Adam(critic_parameters, lr=args.fake_lr, betas=(.9,.999))
     start = 0
     restore = args.resume or args.fork_from
     if restore:
@@ -113,6 +129,8 @@ def train(args):
             raise ValueError("Resume recipe differs")
         generator.load_state_dict(state["generator"])
         fake.load_state_dict(state["fake"])
+        if head is not None:
+            head.load_state_dict(state["gan_head"])
         optimizer.load_state_dict(state["optimizer"])
         fake_optimizer.load_state_dict(state["fake_optimizer"])
         start = state["step"]
@@ -126,6 +144,7 @@ def train(args):
         "framework_parameters": framework_parameters, "teacher_parameters": teacher.num_parameters,
         "generator_ema": False, "validation_loaded_for_training": False,
         "fork_parent": args.fork_from, "fork_parent_sha256": file_hash(args.fork_from) if args.fork_from else None,
+        "gan_training_images": len(real_images.dataset) if real_images is not None else 0,
         "adaptations": "consistency initialization; lognormal EDM sigma .05..20; multiscale L2 regression"}, indent=2)+"\n")
     if not args.resume:
         atomic_save(generator.export(category_to_id=mapping, step=start, guidance=args.guidance), output/"initial.ckpt")
@@ -136,6 +155,12 @@ def train(args):
           f"no EMA; {args.fake_updates} fake-score updates per generator update; start step {start}", flush=True)
     for step in range(start+1, args.steps+1):
         optimizer.zero_grad(set_to_none=True)
+        fake_optimizer.zero_grad(set_to_none=True)
+        gan_active = head is not None and step > args.gan_start
+        reg_weight = args.gan_reg_weight if gan_active else args.reg_weight
+        gan_g_total, gan_d_total = 0.0, 0.0
+        real_accuracy, fake_accuracy = 0.0, 0.0
+        image_std, saturation = 0.0, 0.0
         generated, dm_total, reg_total = [], 0.0, 0.0
         for _ in range(args.batch_size//args.microbatch):
             noise = torch.randn(args.microbatch,c.channels,c.resolution,c.resolution,device=device)
@@ -145,16 +170,26 @@ def train(args):
                 if step > args.score_warmup:
                     grad = distribution_gradient(images, labels, teacher, fake, guidance=args.guidance)
                     dm = gradient_surrogate(images.float(), grad)
-                    ids = fit[torch.randint(len(fit),(args.microbatch,))]
-                    paired = generate(generator, cache["latents"][ids].to(device), cache["labels"][ids].to(device))
-                    reg = matching_loss(paired.float(), cache["targets"][ids].to(device))
-                    loss = dm + args.reg_weight*reg
+                    reg = images.new_zeros(())
+                    if reg_weight:
+                        ids = fit[torch.randint(len(fit),(args.microbatch,))]
+                        paired = generate(generator, cache["latents"][ids].to(device), cache["labels"][ids].to(device))
+                        reg = matching_loss(paired.float(), cache["targets"][ids].to(device))
+                    loss = dm + reg_weight*reg
+                    if gan_active:
+                        from .adversarial import frozen_parameters, random_flip
+                        with frozen_parameters(fake, head):
+                            gan_g = F.softplus(-head(fake, random_flip(images), labels)).mean()
+                        loss = loss + args.gan_weight*gan_g
+                        gan_g_total += float(gan_g.detach())*args.microbatch/args.batch_size
                     if not torch.isfinite(loss):
                         raise FloatingPointError("Nonfinite generator loss")
                     (loss*args.microbatch/args.batch_size).backward()
                     dm_total += float(dm.detach())*args.microbatch/args.batch_size
                     reg_total += float(reg.detach())*args.microbatch/args.batch_size
             generated.append((images.detach(),labels))
+            image_std += float(images.detach().float().std())*args.microbatch/args.batch_size
+            saturation += float((images.detach().abs()>1).float().mean())*args.microbatch/args.batch_size
         norm = torch.nn.utils.clip_grad_norm_(generator.parameters(),1.0,error_if_nonfinite=True)
         if step > args.score_warmup:
             optimizer.step()
@@ -166,16 +201,34 @@ def train(args):
             # every critic update. Generator and teacher receive no gradients.
             for images, labels in generated:
                 with torch.autocast(device_type=device.type, dtype=torch.bfloat16, enabled=args.amp=="bf16"):
+                    if gan_active:
+                        # Fresh samples after the generator update on every critic pass.
+                        with torch.no_grad():
+                            labels = torch.randint(c.num_classes, labels.shape, device=device)
+                            images = generate(generator, torch.randn_like(images), labels)
                     loss = fake.loss(images.float(),labels)
+                    fake_total += float(loss.detach())*args.microbatch/args.batch_size/args.fake_updates
+                    if gan_active:
+                        from .adversarial import random_flip
+                        real, real_labels = real_images.sample(len(images), device)
+                        real_logits = head(fake, random_flip(real), real_labels)
+                        fake_logits = head(fake, random_flip(images.detach()), labels)
+                        gan_d = F.softplus(-real_logits).mean() + F.softplus(fake_logits).mean()
+                        loss = loss + args.gan_weight*gan_d
+                        gan_d_total += float(gan_d.detach())*args.microbatch/args.batch_size/args.fake_updates
+                        real_accuracy += float((real_logits.detach()>0).float().mean())*args.microbatch/args.batch_size/args.fake_updates
+                        fake_accuracy += float((fake_logits.detach()<0).float().mean())*args.microbatch/args.batch_size/args.fake_updates
                 if not torch.isfinite(loss):
                     raise FloatingPointError("Nonfinite fake-score loss")
                 (loss*args.microbatch/args.batch_size).backward()
-                fake_total += float(loss.detach())*args.microbatch/args.batch_size/args.fake_updates
-            torch.nn.utils.clip_grad_norm_(fake.parameters(),1.0,error_if_nonfinite=True)
+            torch.nn.utils.clip_grad_norm_(critic_parameters,1.0,error_if_nonfinite=True)
             fake_optimizer.step()
         check_memory(device,args.memory_limit_gb)
         if step == start+1 or step % args.log_every == 0:
             row = {"step":step,"dm_surrogate":dm_total,"reg_loss":reg_total,"fake_loss":fake_total,"fake_updates":args.fake_updates,
+                   "gan_active":gan_active,"reg_weight":reg_weight,"gan_g":gan_g_total,"gan_d":gan_d_total,
+                   "gan_real_accuracy":real_accuracy,"gan_fake_accuracy":fake_accuracy,
+                   "image_std":image_std,"out_of_range_fraction":saturation,
                    "grad_norm":float(norm),"elapsed_seconds":time.monotonic()-clock,
                    "peak_allocated_gb":torch.cuda.max_memory_allocated(device)/1e9 if device.type=="cuda" else 0}
             print(json.dumps(row),flush=True)
@@ -190,11 +243,14 @@ def train(args):
             save_image((samples+1)/2,output/f"samples-{step:06d}.png",nrow=4)
             exported = generator.export(category_to_id=mapping,step=step,guidance=args.guidance)
             exported["training_recipe"] = "DMD-adapted-v1"
+            if head is not None:
+                exported["training_recipe"] = "DMD2-inspired-gan-v1"
             atomic_save(exported,output/"one_nfe.ckpt")
             snapshots = output/"snapshots"
             snapshots.mkdir(exist_ok=True)
             atomic_save(exported,snapshots/f"one_nfe-{step:06d}.ckpt")
             atomic_save({"identity":identity,"step":step,"generator":generator.state_dict(),
+                **({"gan_head":head.state_dict()} if head is not None else {}),
                 "fake":fake.state_dict(),"optimizer":optimizer.state_dict(),"fake_optimizer":fake_optimizer.state_dict(),
                 "rng_cpu":torch.get_rng_state(),"rng_cuda":torch.cuda.get_rng_state_all() if device.type=="cuda" else None},output/"training-state.pt")
             generator.train()
@@ -215,6 +271,9 @@ def parser():
     p.add_argument("--guidance",type=float,default=2.0)
     p.add_argument("--reg-weight",type=float,default=.25)
     p.add_argument("--score-warmup",type=int,default=50)
+    p.add_argument("--gan-weight",type=float,default=0,help="Enable shared-backbone adversarial head; 0 preserves legacy DMD")
+    p.add_argument("--gan-start",type=int,default=2000,help="Enable GAN after this absolute generator-loop step")
+    p.add_argument("--gan-reg-weight",type=float,default=.025,help="Regression weight once the GAN is active; 0 removes regression")
     p.add_argument("--amp",choices=("bf16","none"),default="bf16")
     p.add_argument("--device",default="cuda")
     p.add_argument("--memory-fraction",type=float)
