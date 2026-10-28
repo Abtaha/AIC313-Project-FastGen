@@ -70,6 +70,18 @@ def train(args):
     teacher_metadata = torch.load(args.teacher, map_location="cpu", weights_only=True)
     teacher = EDMTeacher.load_checkpoint(args.teacher, device=device)
     student = ConsistencyStudent.from_teacher(teacher).train()
+    initialization = None
+    if args.init_student:
+        metadata = torch.load(args.init_student, map_location="cpu", weights_only=True)
+        initial = ConsistencyStudent.load_checkpoint(args.init_student, device="cpu")
+        if (initial.config != student.config or
+                metadata.get("category_to_id") != teacher_metadata.get("category_to_id") or
+                metadata.get("teacher_guidance") != args.guidance):
+            raise ValueError("Initial student architecture, categories, or guidance differs")
+        student.load_state_dict(initial.state_dict())
+        initialization = {"checkpoint_sha256": file_hash(args.init_student),
+                          "source_step": metadata["step"], "fresh_optimizer": True}
+        del initial, metadata
     target = copy.deepcopy(student).eval().requires_grad_(False)
     student_parameters = sum(p.numel() for p in student.parameters())
     teacher_parameters = sum(p.numel() for p in teacher.parameters())
@@ -98,6 +110,8 @@ def train(args):
                 "recipe": {key: getattr(args, key) for key in (
                     "guidance", "batch_size", "num_intervals", "lr", "ema_decay", "loss",
                     "warmup_steps", "amp", "hflip", "seed")}}
+    if initialization is not None:
+        identity["initialization"] = initialization
     optimizer = torch.optim.Adam(student.parameters(), lr=args.lr, betas=(0.9, 0.999))
     start, elapsed_before = 0, 0.0
     if args.resume:
@@ -174,6 +188,8 @@ def train(args):
             check_memory(device, args.memory_limit_gb)
         if step % args.save_every == 0 or step == args.steps:
             exported = target.export(category_to_id=mapping, step=step, guidance=args.guidance)
+            if initialization is not None:
+                exported["initialization"] = initialization
             atomic_save(exported, output / "student.ckpt")
             snapshots = output / "snapshots"
             snapshots.mkdir(exist_ok=True)
@@ -192,6 +208,7 @@ def parser():
     p.add_argument("--teacher", required=True)
     p.add_argument("--outdir", default="checkpoints/distillation-cd")
     p.add_argument("--resume")
+    p.add_argument("--init-student", help="Initialize student and EMA from an exported student; fresh optimizer and branch step counter. Repeat this argument when resuming the branch.")
     p.add_argument("--data-root", default="data/pokemon-generation-one-22k")
     p.add_argument("--split-dir", default="data/pokemon-generation-one-22k")
     p.add_argument("--steps", type=int, default=10000)

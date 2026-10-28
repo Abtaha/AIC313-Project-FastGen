@@ -110,6 +110,27 @@ class DistillationTests(unittest.TestCase):
             self.assertEqual(torch.load(state, weights_only=True)["step"], 2)
             self.assertEqual(torch.load(out / "student.ckpt", weights_only=True)["step"], 2)
             self.assertFalse(json.loads((out / "config.json").read_text())["validation_loaded"])
+            source = out / "student.ckpt"
+            source_bytes = source.read_bytes()
+            initial = ConsistencyStudent.load_checkpoint(source)
+            branch = copy.deepcopy(args)
+            branch.resume, branch.init_student = None, str(source)
+            branch.outdir, branch.steps, branch.lr = str(root / "refinement"), 1, 2e-5
+            def check_initialization(student, target, *positional, **kwargs):
+                for key, value in initial.state_dict().items():
+                    torch.testing.assert_close(student.state_dict()[key], value, rtol=0, atol=0)
+                    torch.testing.assert_close(target.state_dict()[key], value, rtol=0, atol=0)
+                return consistency_loss(student, target, *positional, **kwargs)
+            with patch("distillation.train.PokemonDataset", return_value=dataset):
+                with patch("distillation.train.consistency_loss", side_effect=check_initialization):
+                    train(branch)
+                branch.resume, branch.steps = str(root / "refinement/training-state.pt"), 2
+                train(branch)
+            self.assertEqual(source.read_bytes(), source_bytes)
+            refined = torch.load(branch.resume, weights_only=True)
+            self.assertEqual(refined["identity"]["initialization"]["source_step"], 2)
+            self.assertEqual(refined["optimizer"]["param_groups"][0]["lr"], 2e-5)
+            self.assertEqual({int(value["step"]) for value in refined["optimizer"]["state"].values()}, {2})
 
 
 if __name__ == "__main__":

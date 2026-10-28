@@ -258,3 +258,16 @@ uv run python -m distillation.dmd \
 Compare with the original 1:1 run's preserved 7k snapshot using identical
 evaluation seed and batch. Compare equal generator updates and report the extra
 training cost; the 3:1 branch intentionally uses more fake-score computation.
+
+### Consistency refinement from an exported student
+
+`distillation.train --init-student path/to/student.ckpt` initializes both the
+live student and EMA from those exported weights, with a fresh Adam optimizer.
+The source hash and step are recorded. Branch steps start at zero: `--steps 2000`
+means 2,000 additional updates. Keep `--init-student` when resuming this branch
+with `--resume`; the original source must remain unchanged.
+
+For the fixed refinement experiment, use the original 9k snapshot, LR `2e-5`,
+`--warmup-steps 0`, batch 128, and the existing guidance/EMA/loss settings. Train
+for the predetermined 2k budget, then report final FID with seed 0 and batch 32.
+Sampling schedules are selected using synthetic training pairs, never FID.
