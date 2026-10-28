@@ -1,0 +1,134 @@
+{
+  "source_revision": "145f38c99a66196cd8ab0e6c26ddfa8a979f6c3a",
+  "files": {
+    "teacher.py": {
+      "source": "teacher.py",
+      "sha256": "47eb10ddc7a48f551f769a74684ccd03dedbb72c30dd0bd5d4d5dcb96d01578b"
+    },
+    "model.py": {
+      "source": "model.py",
+      "sha256": "11681a81317802910f9ab0619977263626e3835d530dd3519bf40b07a7648bd9"
+    },
+    "dataset.py": {
+      "source": "dataset.py",
+      "sha256": "47aea2b4ae6833198cbfa0801e0cc63fd5425dbe72bb77aec7f19a97ad90d063"
+    },
+    "download_dataset.py": {
+      "source": "download_dataset.py",
+      "sha256": "e8e882dec2a83dcf5bdbfc1eb592df50948966a66d2a147ea87332652a8190a0"
+    },
+    "evaluate.py": {
+      "source": "evaluate.py",
+      "sha256": "f201320f3505ad478096313eedf657388a0c6aca4af456095509e13807228adb"
+    },
+    "teacher_monitor.py": {
+      "source": "teacher_monitor.py",
+      "sha256": "85f23fa9fc904460e33c5b13b3e6683fa7189abdd5ae473e0dacfb3cefb4f1d8"
+    },
+    "src/__init__.py": {
+      "source": "src/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "src/utils.py": {
+      "source": "src/utils.py",
+      "sha256": "f5a02c07d8ad190969468b5ef947f0037a6943deb98e7903cd193361f742988f"
+    },
+    "src/edm/__init__.py": {
+      "source": "src/edm/__init__.py",
+      "sha256": "291ed3dfd5432778484d8110d739f6844abc4627bd2ca1611f60a48e13082e35"
+    },
+    "src/edm/networks.py": {
+      "source": "src/edm/networks.py",
+      "sha256": "50b1ecbacca90564cf1e97c7d6a8e15733beef23834784c45336ce16797dc499"
+    },
+    "src/edm/LICENSE.txt": {
+      "source": "src/edm/LICENSE.txt",
+      "sha256": "b7249043cca5e5c88f99730ddc40490a3284780dfe423b19f2c75bd5e2a8f03e"
+    },
+    "src/edm/NOTICE.md": {
+      "source": "src/edm/NOTICE.md",
+      "sha256": "4751f5f2e1628801b900d1ff762099e17f82ef198fa576812a73596bbf01de18"
+    },
+    "distillation/__init__.py": {
+      "source": "distillation/__init__.py",
+      "sha256": "eb4061fa4dc809c096ac6c7a7f747255a9306222aac3c3d9f5e44c9e6532c8f9"
+    },
+    "distillation/model.py": {
+      "source": "distillation/model.py",
+      "sha256": "64a27e59d8e1e0c471dfb22a88d3598b0e040033b95e5c658e332faeabde6230"
+    },
+    "distillation/loss.py": {
+      "source": "distillation/loss.py",
+      "sha256": "f3c77c20ab702a10d41764d948539b6e329e27286eef742df17ba29d5efd7d44"
+    },
+    "distillation/train.py": {
+      "source": "distillation/train.py",
+      "sha256": "68a04d19fdc8f32a0f531b01b0823d381376b5475564b4a7b9ea9ed625cd5f91"
+    },
+    "training/teacher.py": {
+      "source": "train_teacher.py",
+      "sha256": "1ef2b940fecebce7216a5e1890756b770d91aac8a4c01cb80141656b747949f8"
+    },
+    "distillation/dmd.py": {
+      "source": "distillation/dmd.py",
+      "revision": "a7cabe15",
+      "adaptation": "Imports point to minimal support module; no GAN or experimental LR branches."
+    },
+    "data/pokemon-generation-one-22k/train_split.txt": {
+      "sha256": "c4068bdec8c5994fa14887d3335e762dd6a4da1bc6394a6df7fae96d293138c0"
+    },
+    "data/pokemon-generation-one-22k/val_split.txt": {
+      "sha256": "6dfba46a82c1bb329287d6da0f87be1b3b71d26c217150bf681f37cce4264df0"
+    },
+    "data/pokemon-generation-one-22k/category_to_id.json": {
+      "sha256": "7c27ec2a15fa4f70b5729319d596d3a80bc528cdeeb02f36b88877a6545b77e8"
+    }
+  },
+  "minimal_support": {
+    "file": "distillation/support.py",
+    "sources": [
+      "distillation/train_scheduler.py:target_cache",
+      "distillation/train_scheduler.py:report_fid",
+      "distillation/schedulers.py:matching_loss"
+    ],
+    "adaptation": "Student-only FID; frozen scheduler pilots are omitted."
+  },
+  "package_files": {
+    ".gitignore": "f64e6fa94de2011369b6bace147efb6ed0118d44852c901c616e8a27ba889796",
+    "README.md": "4be54cb9bd17e28dce813d2d4fe3d7984064b09c302efb5b524d8683d3dbc4cf",
+    "REFERENCE_RESULTS.json": "8dff9f0fbec9d3cea27f5a6d012286333e8b3608e9e501f55580e08e12065882",
+    "_common.py": "d062a1ff1af70a39841ced712b27b326080e64c3faa91aaff3af04e8610bd817",
+    "data/pokemon-generation-one-22k/category_to_id.json": "7c27ec2a15fa4f70b5729319d596d3a80bc528cdeeb02f36b88877a6545b77e8",
+    "data/pokemon-generation-one-22k/train_split.txt": "c4068bdec8c5994fa14887d3335e762dd6a4da1bc6394a6df7fae96d293138c0",
+    "data/pokemon-generation-one-22k/val_split.txt": "6dfba46a82c1bb329287d6da0f87be1b3b71d26c217150bf681f37cce4264df0",
+    "dataset.py": "47aea2b4ae6833198cbfa0801e0cc63fd5425dbe72bb77aec7f19a97ad90d063",
+    "distillation/__init__.py": "eb4061fa4dc809c096ac6c7a7f747255a9306222aac3c3d9f5e44c9e6532c8f9",
+    "distillation/dmd.py": "62efcb3ce67917d3fc9d40a82f19fc087988333a5ec68e58bdfb0bb4c4135653",
+    "distillation/loss.py": "f3c77c20ab702a10d41764d948539b6e329e27286eef742df17ba29d5efd7d44",
+    "distillation/model.py": "64a27e59d8e1e0c471dfb22a88d3598b0e040033b95e5c658e332faeabde6230",
+    "distillation/support.py": "1ab27d00187cef203fa8c29da3e5a4a069151ee8457dfad18916c93a179dd93f",
+    "distillation/train.py": "68a04d19fdc8f32a0f531b01b0823d381376b5475564b4a7b9ea9ed625cd5f91",
+    "download_dataset.py": "e8e882dec2a83dcf5bdbfc1eb592df50948966a66d2a147ea87332652a8190a0",
+    "evaluate.py": "f201320f3505ad478096313eedf657388a0c6aca4af456095509e13807228adb",
+    "evaluate_models.py": "33ef0d77ff4e09cb49e8c2ed8072fdeac60174383f8617890ce887bf6dbf9c38",
+    "export_models.py": "8f2b7f68ea7130ab26904c0bd463358c4b742d903428d27133a0f1adf7d34122",
+    "model.py": "11681a81317802910f9ab0619977263626e3835d530dd3519bf40b07a7648bd9",
+    "prepare_cache.py": "a07a8ec4ff03ce353334b8cd9d65492b6841bb4866e1ccd3b0f0edec666ac95e",
+    "recipes.json": "5450c3f8d21a42bfb07c9b51ffbc222b18f3e80692be5471ba5ade55d0a24948",
+    "requirements.txt": "8f89f90c019daa99f6b7613e52f5317ae88dccf57c022e8e068a3c4c68d35f6c",
+    "src/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "src/edm/LICENSE.txt": "b7249043cca5e5c88f99730ddc40490a3284780dfe423b19f2c75bd5e2a8f03e",
+    "src/edm/NOTICE.md": "4751f5f2e1628801b900d1ff762099e17f82ef198fa576812a73596bbf01de18",
+    "src/edm/__init__.py": "291ed3dfd5432778484d8110d739f6844abc4627bd2ca1611f60a48e13082e35",
+    "src/edm/networks.py": "50b1ecbacca90564cf1e97c7d6a8e15733beef23834784c45336ce16797dc499",
+    "src/utils.py": "f5a02c07d8ad190969468b5ef947f0037a6943deb98e7903cd193361f742988f",
+    "teacher.py": "47eb10ddc7a48f551f769a74684ccd03dedbb72c30dd0bd5d4d5dcb96d01578b",
+    "teacher_monitor.py": "85f23fa9fc904460e33c5b13b3e6683fa7189abdd5ae473e0dacfb3cefb4f1d8",
+    "train_few_nfe.py": "7e00660f07bb09ffab3c472ad3819cab0d5dd5b6434c93a54d6c056a5e78f4b6",
+    "train_one_nfe.py": "b539145cea1b48f47f8c0925317be00326a2140739cdc215f5dc4393d5e23406",
+    "train_teacher.py": "a49d5758197473c65d24b0f671f81a8e605937e53b55003792bdd03dc8112ce3",
+    "training/__init__.py": "370b6b52d5b62b46477fb18b33db870fe9aebb12a7d2e09ec46d3015448e8ec8",
+    "training/teacher.py": "1ef2b940fecebce7216a5e1890756b770d91aac8a4c01cb80141656b747949f8",
+    "verify.py": "78c9237984aec8ccb83a59354143a7c7ebb0cacbdcd1adb004114410295c3f03"
+  }
+}

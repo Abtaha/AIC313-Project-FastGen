@@ -1,0 +1,29 @@
+{
+  "note": "Historical measured artifacts, not guaranteed outcomes of fresh training. No checkpoint binaries are bundled.",
+  "teacher": {
+    "fid": 20.175827,
+    "nfe": 158,
+    "steps": 100000,
+    "seen_images": 12800000,
+    "seed": 0,
+    "evaluation_batch_size": 8,
+    "sha256": "b108931ca379200ca17f3449cc50e186263a2d71913efebce6b002e30e1bbf9c",
+    "historical_fit_subset_and_complete_resume_history_verified": false
+  },
+  "one_nfe": {
+    "fid": 58.60282864406287,
+    "nfe": 1,
+    "seed": 10789,
+    "evaluation_batch_size": 8,
+    "sha256": "b9cf6fbb9b7eabcd556334475a69e2767b5197f7f9ebdf10bc305017774b541a",
+    "lineage": "Consistency 1000 -> DMD 5000 at 1:1 -> fork to 7000 at 3:1"
+  },
+  "few_nfe": {
+    "fid": 26.3088,
+    "nfe": 4,
+    "seed": 0,
+    "evaluation_batch_size": 32,
+    "sha256": "0a96dc7f893a08c2dfd2832152644f07eacd56fc1e09407adf9d433f4d7e8692",
+    "lineage": "Consistency 9000 -> 2000 additional updates at LR 2e-5 -> fixed [80,5,.5,.02] grid"
+  }
+}

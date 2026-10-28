@@ -1,0 +1,8 @@
+# Versions observed on the training server (Python 3.10.22).
+# Install torch/torchvision CUDA wheels from the cu124 index first; see README.
+torch==2.6.0
+torchvision==0.21.0
+clean-fid==0.1.35
+kagglehub==1.0.2
+Pillow==12.3.0
+tqdm==4.70.1

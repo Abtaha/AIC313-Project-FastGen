@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+.venv/
+runs/
+submission/
+results/
+data/**/PokemonData/
+data/**/.transparency_composited_on_white
