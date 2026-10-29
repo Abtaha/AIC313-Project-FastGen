@@ -49,6 +49,7 @@ def main():
         fixture = torch.utils.data.TensorDataset(torch.randn(6,3,8,8), torch.tensor([0,1,2,0,1,2]))
         fixture.category_ids = [0,1,2,0,1,2]
         fixture.paths = [f"train/{index}.png" for index in range(6)]
+        (root / "train_split.txt").write_text("train-only synthetic fixture\n")
         teacher_args = teacher_parser().parse_args(["--outdir",str(root/"teacher-run"),
             "--split-dir",str(root),"--steps","1","--batch-size","2","--microbatch","1",
             "--device","cpu","--amp","none","--num-workers","0","--loss-every","0","--fid-every","0"])
@@ -64,21 +65,26 @@ def main():
             train_consistency(args)
         args = dmd_parser().parse_args(["--teacher",str(base),"--student",str(root/"cd/student.ckpt"),
             "--cache",str(root/"pairs.pt"),"--outdir",str(root/"dmd"),"--steps","1",
-            "--batch-size","2","--microbatch","1","--device","cpu","--amp","none","--score-warmup","0"])
+            "--batch-size","2","--microbatch","1","--device","cpu","--amp","none","--score-warmup","0",
+            "--fake-updates","3","--gan-weight",".003","--gan-start","1","--gan-reg-weight",".025"])
         args.teacher_steps,args.train_per_class = 2,2
         target_cache(args, frozen, hashlib.sha256(base.read_bytes()).hexdigest(), mapping, torch.device("cpu"))
-        train_dmd(args)
-        parent_hash=hashlib.sha256((root/"dmd/training-state.pt").read_bytes()).hexdigest()
-        args.fork_from,args.outdir,args.steps,args.fake_updates = str(root/"dmd/training-state.pt"),str(root/"ratio3"),2,3
-        train_dmd(args)
-        state=torch.load(root/"ratio3/training-state.pt",weights_only=True)
+        with patch("distillation.adversarial.PokemonDataset",return_value=fixture):
+            train_dmd(args)
+            before=torch.load(root/"dmd/training-state.pt",weights_only=True)
+            args.resume,args.steps = str(root/"dmd/training-state.pt"),2
+            train_dmd(args)
+        state=torch.load(root/"dmd/training-state.pt",weights_only=True)
         assert state["step"] == 2
-        assert int(next(iter(state["fake_optimizer"]["state"].values()))["step"]) == 4
-        assert hashlib.sha256((root/"dmd/training-state.pt").read_bytes()).hexdigest() == parent_hash
+        assert int(next(iter(state["fake_optimizer"]["state"].values()))["step"]) == 6
+        assert any(not torch.equal(value,state["gan_head"][key]) for key,value in before["gan_head"].items())
+        rows=[json.loads(line) for line in (root/"dmd/stats.jsonl").read_text().splitlines()]
+        assert [row["gan_active"] for row in rows] == [False,True]
+        assert rows[-1]["reg_weight"] == .025
         # Export actual tiny checkpoint structures through the production entry point.
         import export_models
         for name,source,step in (("teacher/teacher.ckpt",base,100000),
-                ("one-nfe/snapshots/one_nfe-007000.ckpt",root/"ratio3/one_nfe.ckpt",7000),
+                ("one-adversarial/snapshots/one_nfe-005000.ckpt",root/"dmd/one_nfe.ckpt",5000),
                 ("few-refine/snapshots/student-002000.ckpt",root/"cd/student.ckpt",2000)):
             payload=torch.load(source,weights_only=True)
             payload["step"]=step
@@ -90,7 +96,7 @@ def main():
         exported=ConsistencyStudent.load_checkpoint(root/"submission/few_nfe.ckpt")
         torch.testing.assert_close(exported.four_sigmas,torch.tensor([80,5,.5,.02]))
         assert (root/"submission/manifest.json").exists()
-    print("PASS: standalone imports, fixed splits, teacher train/resume, 1/4 actual NFE, consistency training, cache, DMD training/fork, and exports.")
+    print("PASS: standalone imports, fixed splits, teacher train/resume, 1/4 actual NFE, consistency training, cache, adversarial stage transition/resume, and exports.")
 
 
 if __name__ == "__main__":

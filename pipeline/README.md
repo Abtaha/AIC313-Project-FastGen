@@ -8,13 +8,13 @@ experiment. No checkpoint binaries or training images are bundled.
 | Model | Measured competition FID | Inference calls | Fixed endpoint |
 |---|---:|---:|---|
 | V1 EDM teacher | 20.1758 | 158 | 100k updates; 40 Heun steps, CFG 2 |
-| One-pass DMD | 58.6028 | 1 | CD 1k → DMD 5k at 1:1 → fork to 7k at 3:1 |
+| One-pass DMD + adversarial refinement | 38.6546 | 1 | Refined CD → DMD 2k → adversarial refinement to 5k |
 | Refined consistency | 26.3088 | 4 | CD 9k → 2k lower-LR refinement; fixed noise grid |
 
 These scores describe the preserved historical checkpoints, not guaranteed
 scores for a retraining. `REFERENCE_RESULTS.json` records hashes, seeds, and
-known provenance limits. Experimental GAN runs and 5:1/LR sweeps are omitted
-because they have not established a better completed result.
+known provenance limits. The completed adversarial control is included; the
+ongoing 5:1/LR sweeps are omitted because their results are not established.
 
 ## Environment and data
 
@@ -82,8 +82,7 @@ python train_few_nfe.py
 
 The script performs three stages and saves all required intermediate artifacts:
 
-1. Guided consistency distillation to 2k, batch 128/microbatch 8, saving the 1k
-   snapshot needed by one-pass training.
+1. Guided consistency distillation to 2k, batch 128/microbatch 8.
 2. Resume the same optimizer/student/EMA to 9k with microbatch 32. The teacher
    uses CFG 2; the objective uses 40 noise intervals, pseudo-Huber distance,
    LR `1e-4`, 500-step warmup, EMA decay .95, and balanced class sampling.
@@ -113,33 +112,45 @@ these are four actual backbone calls, not four Heun steps.
 python train_one_nfe.py
 ```
 
-This requires the **1k** consistency snapshot saved above. It does not initialize
-from the refined four-pass weights; that is a separate ongoing experiment and
-is intentionally excluded from this best-completed-model package.
+This initializes from the **refined 2k EMA snapshot** saved above, before the
+four-pass sampling-grid adjustment at export. The generator starts with the
+stronger consistency weights; it is trained to generate in one direct pass.
 
 The script creates/verifies a deterministic guided-teacher cache: 40 Heun
 steps, CFG 2, seed 123, two fitting and one independent synthetic monitoring
 pair per class (453 pairs total). These are generated images, not validation
 images. It then trains:
 
-1. DMD from that 1k consistency student for 5k updates at **1:1** fake-score
-   updates. Batch 64/microbatch 8, BF16, generator LR `5e-6`, fake LR `1e-4`,
-   50 initial fake-score-only updates, regression coefficient .25, seed 789.
-2. Fork the full 5k state into a separate run, retaining generator/fake-score
-   weights, both Adam states and RNG. Change only the ratio to **3:1** and train
-   to absolute step **7k**, adding 2k updates. Keep this endpoint rather than
-   extending to the historical 10k continuation, which measured worse FID.
+1. DMD for 2k updates with **3:1** fake-score updates throughout. Batch
+   64/microbatch 8, BF16, generator LR `5e-6`, fake LR `1e-4`, seed 789.
+   The first 200 updates train only the fake-score network. Regression weight
+   is .25. The GAN head is initialized and checkpointed but remains inactive.
+   The historical endpoint measured **47.6906 FID**.
+2. Preserve the full 2k state, then resume the same run to absolute step **5k**,
+   adding 3k updates. Enable GAN loss with coefficient `.003` and reduce
+   regression to `.025` after step 2000. The endpoint measured **38.6546 FID**.
+   Stage lengths are fixed; validation FID does not gate the transition.
 
 ```text
 runs/teacher-pairs.pt
-runs/one-dmd/training-state.pt
-runs/one-nfe/snapshots/one_nfe-007000.ckpt
+runs/one-adversarial/stage1-step2000/training-state.pt
+runs/one-adversarial/snapshots/one_nfe-005000.ckpt
 ```
 
 The loss uses a frozen guided teacher, a trainable conditional fake-score
 denoiser, distribution-matching gradients, and multiscale L2 paired regression.
+The small conditional classifier shares the fake-score encoder/middle blocks.
+It learns from all 17,079 official training images, with uniform class/image
+sampling, noisy inputs, and horizontal flips. The generator receives a
+non-saturating GAN gradient through frozen classifier weights. Each adversarial
+critic update uses fresh detached generated images. This is a DMD2-inspired
+adaptation retaining a small regression anchor, not an exact DMD2 reproduction.
+
 There is no generator EMA: generator + fake score + another full EMA would
-exceed 100M parameters. The one-pass inference export contains only the generator.
+exceed 100M parameters. The training framework includes the GAN head and totals
+**69,991,239 parameters**. The one-pass export contains only the generator and
+does not call the fake-score model or GAN head at inference. The new run uses a
+distinct output directory so older one-pass artifacts are not overwritten.
 
 ## Resume, inspect, and export
 
@@ -191,8 +202,9 @@ PNG conversion and fresh temporary directories. FID metric weights may download
 on first evaluation. Results go to each new output directory's `fid.json`.
 Validation is for reporting, not training or hyperparameter selection.
 
-All inference models have 34,798,755 parameters. Teacher + EMA, consistency +
-EMA, or one-pass generator + fake score each have 69,597,510. Training guards
+All inference models have 34,798,755 parameters. Teacher + EMA and consistency +
+EMA each have 69,597,510; one-pass generator + fake score + GAN head has
+69,991,239. Training guards
 enforce 100M and 20 GB allocated VRAM. Changing microbatch can change random
 streams and numerical results; check memory on the actual course GPU.
 
@@ -200,4 +212,5 @@ Source provenance is in `SOURCE_MANIFEST.json`. NVIDIA's backbone attribution
 and CC BY-NC-SA 4.0 license are retained under `src/edm/`. Methods follow
 [EDM](https://arxiv.org/abs/2206.00364),
 [Consistency Models](https://arxiv.org/abs/2303.01469), and
-[DMD](https://arxiv.org/abs/2311.18828), with the adaptations documented above.
+[DMD](https://arxiv.org/abs/2311.18828), and
+[DMD2](https://arxiv.org/abs/2405.14867), with the adaptations documented above.

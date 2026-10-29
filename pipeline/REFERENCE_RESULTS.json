@@ -11,12 +11,15 @@
     "historical_fit_subset_and_complete_resume_history_verified": false
   },
   "one_nfe": {
-    "fid": 58.60282864406287,
+    "fid": 38.65463321095268,
     "nfe": 1,
     "seed": 10789,
     "evaluation_batch_size": 8,
-    "sha256": "b9cf6fbb9b7eabcd556334475a69e2767b5197f7f9ebdf10bc305017774b541a",
-    "lineage": "Consistency 1000 -> DMD 5000 at 1:1 -> fork to 7000 at 3:1"
+    "sha256": "68c975311148d0c0eed7587210c49282bd44331b19d6345e9ccff1885b1942dd",
+    "lineage": "Consistency 9000 -> 2000 lower-LR refinement -> DMD 2000 (200 score-only warmup) -> adversarial refinement to 5000",
+    "initial_student_sha256": "fa335e1b417d632aa9d9fb3eea2a19e29eb7e16130f36be454f510d0373d95c8",
+    "stage1_fid": 47.69064394373453,
+    "training_framework_parameters": 69991239
   },
   "few_nfe": {
     "fid": 26.3088,

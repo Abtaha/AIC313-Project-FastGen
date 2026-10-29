@@ -1,29 +1,81 @@
 {
   "teacher": {
-    "batch_size": 128, "microbatch": 64, "model_channels": 96,
-    "num_blocks": 4, "dropout": 0.1, "label_dropout": 0.1,
-    "lr": 0.0002, "lr_rampup_kimg": 100, "ema_halflife_kimg": 500,
-    "grad_clip": 10.0, "amp": "bf16", "hflip": true, "seed": 0,
-    "num_workers": 4, "holdout_fraction": 0.1,
-    "loss_every": 0, "fid_every": 0, "early_stop_patience": 0,
-    "save_every": 1000, "sample_every": 1000, "log_every": 50
+    "batch_size": 128,
+    "microbatch": 64,
+    "model_channels": 96,
+    "num_blocks": 4,
+    "dropout": 0.1,
+    "label_dropout": 0.1,
+    "lr": 0.0002,
+    "lr_rampup_kimg": 100,
+    "ema_halflife_kimg": 500,
+    "grad_clip": 10.0,
+    "amp": "bf16",
+    "hflip": true,
+    "seed": 0,
+    "num_workers": 4,
+    "holdout_fraction": 0.1,
+    "loss_every": 0,
+    "fid_every": 0,
+    "early_stop_patience": 0,
+    "save_every": 1000,
+    "sample_every": 1000,
+    "log_every": 50
   },
   "consistency": {
-    "batch_size": 128, "num_workers": 4, "guidance": 2.0,
-    "num_intervals": 40, "lr": 0.0001, "warmup_steps": 500,
-    "ema_decay": 0.95, "loss": "pseudo-huber", "grad_clip": 1.0,
-    "amp": "bf16", "hflip": true, "seed": 42,
-    "save_every": 1000, "sample_every": 1000, "log_every": 50
+    "batch_size": 128,
+    "num_workers": 4,
+    "guidance": 2.0,
+    "num_intervals": 40,
+    "lr": 0.0001,
+    "warmup_steps": 500,
+    "ema_decay": 0.95,
+    "loss": "pseudo-huber",
+    "grad_clip": 1.0,
+    "amp": "bf16",
+    "hflip": true,
+    "seed": 42,
+    "save_every": 1000,
+    "sample_every": 1000,
+    "log_every": 50
   },
-  "refinement": {"lr": 0.00002, "warmup_steps": 0, "microbatch": 16,
-    "num_workers": 2, "save_every": 500, "sample_every": 500, "log_every": 25},
+  "refinement": {
+    "lr": 2e-05,
+    "warmup_steps": 0,
+    "microbatch": 16,
+    "num_workers": 2,
+    "save_every": 500,
+    "sample_every": 500,
+    "log_every": 25
+  },
   "dmd": {
-    "batch_size": 64, "microbatch": 8, "lr": 0.000005,
-    "fake_lr": 0.0001, "guidance": 2.0, "reg_weight": 0.25,
-    "score_warmup": 50, "amp": "bf16", "seed": 789,
-    "save_every": 500, "log_every": 25
+    "batch_size": 64,
+    "microbatch": 8,
+    "lr": 5e-06,
+    "fake_lr": 0.0001,
+    "guidance": 2.0,
+    "reg_weight": 0.25,
+    "score_warmup": 200,
+    "amp": "bf16",
+    "seed": 789,
+    "save_every": 500,
+    "log_every": 25,
+    "fake_updates": 3,
+    "gan_weight": 0.003,
+    "gan_start": 2000,
+    "gan_reg_weight": 0.025
   },
-  "cache": {"teacher_steps": 40, "guidance": 2.0, "seed": 123,
-    "train_per_class": 2, "microbatch": 8},
-  "four_sigmas": [80.0, 5.0, 0.5, 0.02]
+  "cache": {
+    "teacher_steps": 40,
+    "guidance": 2.0,
+    "seed": 123,
+    "train_per_class": 2,
+    "microbatch": 8
+  },
+  "four_sigmas": [
+    80.0,
+    5.0,
+    0.5,
+    0.02
+  ]
 }

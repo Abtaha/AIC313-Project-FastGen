@@ -21,7 +21,7 @@ def main():
     if args.outdir.exists() and any(args.outdir.iterdir()):
         raise FileExistsError("Choose an empty output directory to preserve existing exports")
     sources = {"teacher": args.teacher or args.workdir / "teacher/teacher.ckpt",
-               "one_nfe": args.workdir / "one-nfe/snapshots/one_nfe-007000.ckpt",
+               "one_nfe": args.workdir / "one-adversarial/snapshots/one_nfe-005000.ckpt",
                "few_nfe": args.workdir / "few-refine/snapshots/student-002000.ckpt"}
     for path in sources.values():
         if not path.is_file():
@@ -30,9 +30,11 @@ def main():
     metadata = {}
     for name, source in sources.items():
         payload = torch.load(source, map_location="cpu", weights_only=True)
-        expected_step = {"teacher": 100000, "one_nfe": 7000, "few_nfe": 2000}[name]
+        expected_step = {"teacher": 100000, "one_nfe": 5000, "few_nfe": 2000}[name]
         if payload.get("step") != expected_step:
             raise ValueError(f"{name} must be the fixed endpoint at step {expected_step}")
+        if name == "one_nfe" and payload.get("training_recipe") != "DMD2-inspired-gan-v1":
+            raise ValueError("One-pass export must come from the completed adversarial recipe")
         if name == "teacher":
             network = EDMTeacher.load_checkpoint(source)
         else:
