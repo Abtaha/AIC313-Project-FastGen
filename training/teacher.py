@@ -5,6 +5,7 @@ from contextlib import nullcontext
 import copy
 from dataclasses import asdict
 import json
+import hashlib
 import math
 from pathlib import Path
 import random
@@ -55,6 +56,8 @@ def train(args):
     for interval in (args.snapshot_every, args.state_snapshot_every):
         if interval < 0 or (interval and interval % args.save_every):
             raise ValueError("Snapshot intervals must be zero or multiples of save-every")
+    if args.resume and args.init_teacher:
+        raise ValueError("Choose resume or init-teacher, not both")
     device = torch.device(args.device)
     if device.type == "cuda" and not torch.cuda.is_available():
         raise RuntimeError("CUDA unavailable; use --device cpu for a smoke test")
@@ -62,6 +65,10 @@ def train(args):
         raise ValueError("AMP is supported on CUDA only; use --amp none on CPU")
     if args.amp == "bf16" and not torch.cuda.is_bf16_supported():
         raise ValueError("BF16 is unavailable on this GPU; use --amp fp16 or --amp none")
+    if args.memory_fraction is not None:
+        if device.type != "cuda" or not 0 < args.memory_fraction <= 1:
+            raise ValueError("memory-fraction requires CUDA and a value in (0, 1]")
+        torch.cuda.set_per_process_memory_fraction(args.memory_fraction, device)
     random.seed(args.seed)
     torch.manual_seed(args.seed)
     if device.type == "cuda":
@@ -112,6 +119,21 @@ def train(args):
     best_fid = None
     best_holdout_loss = None
     stale_checks = 0
+    initialization = None
+    if args.init_teacher:
+        source = torch.load(args.init_teacher, map_location="cpu", weights_only=True)
+        if (source.get("format") != "fastgen-edm-teacher-v1" or source["config"] != asdict(config)
+                or source["category_to_id"] != category_to_id):
+            raise ValueError("Initial teacher architecture/category mapping differs")
+        model.load_state_dict(source["state_dict"])
+        ema.load_state_dict(source["state_dict"])
+        start_step = int(source["step"])
+        seen_images = int(source["seen_images"])
+        initialization = {"path": args.init_teacher, "step": start_step,
+                          "sha256": hashlib.sha256(Path(args.init_teacher).read_bytes()).hexdigest(),
+                          "optimizer": "fresh Adam; initialized from exported EMA"}
+        print(json.dumps({"initialization": initialization}), flush=True)
+        del source
     if args.resume:
         state = torch.load(args.resume, map_location="cpu", weights_only=True)
         if state["config"] != asdict(config) or state["category_to_id"] != category_to_id:
@@ -131,6 +153,7 @@ def train(args):
         scaler.load_state_dict(state["scaler"])
         start_step, seen_images = state["step"], state["seen_images"]
         elapsed_before = state["elapsed_seconds"]
+        initialization = state.get("initialization")
         best_fid = state["best_fid"]
         best_holdout_loss = state["best_holdout_loss"]
         stale_checks = state["stale_checks"]
@@ -139,9 +162,11 @@ def train(args):
         loader_generator.set_state(state["rng_loader"])
         if device.type == "cuda" and state["rng_cuda"] is not None:
             torch.cuda.set_rng_state_all(state["rng_cuda"])
+    if args.steps <= start_step:
+        raise ValueError("steps must exceed the starting checkpoint step")
     (output / "config.json").write_text(json.dumps(
         {"teacher": asdict(config), "training": vars(args),
-         "category_to_id": category_to_id}, indent=2
+         "category_to_id": category_to_id, "initialization": initialization}, indent=2
     ) + "\n")
     save_monitor_split(dataset, fit_indices, holdout_indices, output / "monitor-split.json")
     class_probabilities = torch.bincount(
@@ -176,7 +201,7 @@ def train(args):
                     "train_manifest_sha256": split_fingerprint(dataset)}
         atomic_save({**ema.checkpoint(), **metadata}, output / "teacher.ckpt")
         atomic_save({
-            "config": asdict(config), **metadata, "model": model.state_dict(),
+            "config": asdict(config), **metadata, "initialization": initialization, "model": model.state_dict(),
             "ema": ema.state_dict(), "optimizer": optimizer.state_dict(),
             "scaler": scaler.state_dict(), "batch_size": args.batch_size,
             "elapsed_seconds": elapsed_before + time.monotonic() - started,
@@ -312,6 +337,8 @@ def parser():
     p.add_argument("--num-workers", type=int, default=4)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--resume")
+    p.add_argument("--init-teacher", help="Initialize live and EMA weights from an export; fresh optimizer")
+    p.add_argument("--memory-fraction", type=float)
     p.add_argument("--save-every", type=int, default=1000)
     p.add_argument("--snapshot-every", type=int, default=5000, help="Retain EMA exports; 0 disables")
     p.add_argument("--state-snapshot-every", type=int, default=20000, help="Retain resumable states; 0 disables")

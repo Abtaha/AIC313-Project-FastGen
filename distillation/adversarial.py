@@ -69,11 +69,16 @@ def frozen_parameters(*modules):
 
 class BalancedTrainingImages:
     """Uniform classes, uniform image within class; opens only train_split.txt."""
-    def __init__(self, data_root, split_dir, mapping):
+    def __init__(self, data_root, split_dir, mapping, exclude_manifest=None):
         self.dataset = PokemonDataset(data_root, Path(split_dir)/'train_split.txt',
                                      return_category=True, category_to_id=mapping)
         categories = torch.tensor(self.dataset.category_ids)
-        self.indices = [(categories == label).nonzero().flatten() for label in range(len(mapping))]
+        excluded = set(Path(exclude_manifest).read_text().splitlines()) if exclude_manifest else set()
+        if excluded - set(self.dataset.paths):
+            raise ValueError("Monitoring exclusions must belong to train_split.txt")
+        allowed = torch.tensor([path not in excluded for path in self.dataset.paths]) if excluded else torch.ones(len(categories), dtype=torch.bool)
+        self.indices = [((categories == label) & allowed).nonzero().flatten() for label in range(len(mapping))]
+        self.training_count = int(allowed.sum())
         if any(len(indices) == 0 for indices in self.indices):
             raise ValueError("Every class needs training images for GAN supervision")
 

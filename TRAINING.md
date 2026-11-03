@@ -237,3 +237,34 @@ The watcher must remain running (the server uses tmux session `teacher_retention
 Retention uses hard links to completed atomic saves; later checkpoint replacements
 do not alter saved snapshots. The 200k run needs approximately 11 GB for scheduled
 snapshots, plus its initial preserved save and latest files.
+
+## November refinement experiments
+
+`experiments/refinement.py` runs two independent GPU jobs from immutable baseline
+copies. First run `--task prepare`, then run `--task teacher` and `--task student`
+in separate tmux sessions. Every invocation needs `--baseline-root` (the previous
+experiment repository), `--teacher` (the original teacher export), and `--workdir`
+(an experiment output directory).
+
+* Teacher: initialize from the original 100k-step EMA, fresh Adam at 2e-5, and
+  train to absolute step 110k. Batch 128, microbatch 32, BF16, unchanged natural
+  image sampling and 10% internal holdout. Save EMA every 1k and full state every
+  5k; measure denoising loss every 1k. Compare the original and 101k/105k/110k
+  exports at guidance 1.5, 2.0, 2.5 on the training-only reference.
+* Student: fork the exact 5k generator, fake-score, GAN-head and optimizer state.
+  Use 5 fake updates per loop and freeze the generator through absolute step
+  5100. Both branches then receive 1,000 generator updates. `fixed5` keeps the
+  GAN-phase regression weight at .025; `decay5` linearly reduces it from .025 at
+  5100 to zero at 5600. GAN weight, learning rates, batches and initial RNG state
+  are matched. Fresh-sample fake-score diagnostics are logged every 250 steps.
+* Monitoring: a deterministic 10 images/class (1,510 total) from train_split.txt,
+  excluded from the new real-image GAN updates. Generate 20/class (3,020) using
+  the official image conversion and CleanFID functions. Parents may have seen
+  these reference images during earlier training: this is a training-only
+  monitoring metric, not an untouched holdout or the official validation FID.
+  No official validation images are loaded by this experiment runner.
+
+The student runner executes `decay5` first, then its matched `fixed5` control,
+retaining samples, diagnostics, snapshot scores and wall-clock timings. It does
+not replace the submitted model checkpoints. Student branches deliberately use
+the existing frozen teacher rather than the simultaneously refined teacher.
