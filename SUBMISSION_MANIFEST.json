@@ -1,0 +1,64 @@
+{
+  "submission_type": "midterm",
+  "team_id": 20,
+  "requirements_url": "https://generative-models.kaist.ac.kr/fastgen/",
+  "official_base_revision": "3ccf3261495bd144bf844b7f298d10406b53117a",
+  "source_revision": "0c344ae300d0a4844970bd9aedea9e1c55029f6c",
+  "protected_files": {
+    "dataset.py": "47aea2b4ae6833198cbfa0801e0cc63fd5425dbe72bb77aec7f19a97ad90d063",
+    "download_dataset.py": "e8e882dec2a83dcf5bdbfc1eb592df50948966a66d2a147ea87332652a8190a0",
+    "evaluate.py": "f201320f3505ad478096313eedf657388a0c6aca4af456095509e13807228adb",
+    "src/utils.py": "f5a02c07d8ad190969468b5ef947f0037a6943deb98e7903cd193361f742988f",
+    "requirements.txt": "e30940e3e890e6e5463f617475b97d7415e73f349fbf4070936aa284f0573eb2",
+    "data/pokemon-generation-one-22k/train_split.txt": "c4068bdec8c5994fa14887d3335e762dd6a4da1bc6394a6df7fae96d293138c0",
+    "data/pokemon-generation-one-22k/val_split.txt": "6dfba46a82c1bb329287d6da0f87be1b3b71d26c217150bf681f37cce4264df0",
+    "data/pokemon-generation-one-22k/category_to_id.json": "7c27ec2a15fa4f70b5729319d596d3a80bc528cdeeb02f36b88877a6545b77e8"
+  },
+  "official_base_model_ast_sha256": "17c06b84920cbebc506f1382900bd6df5b540df9d21e667a8a9d36ee39d669e7",
+  "checkpoints": {
+    "one_nfe": {
+      "sha256": "68c975311148d0c0eed7587210c49282bd44331b19d6345e9ccff1885b1942dd",
+      "parameters": 34798755,
+      "nfe": 1,
+      "self_measured_fid": 38.65463321095268,
+      "seed": 10789,
+      "evaluation_batch_size": 8
+    },
+    "few_nfe": {
+      "sha256": "0a96dc7f893a08c2dfd2832152644f07eacd56fc1e09407adf9d433f4d7e8692",
+      "parameters": 34798755,
+      "nfe": 4,
+      "self_measured_fid": 26.3088,
+      "seed": 0,
+      "evaluation_batch_size": 32
+    }
+  },
+  "observed_environment": {
+    "python": "3.10.22",
+    "torch": "2.6.0+cu124",
+    "torchvision": "0.21.0+cu124",
+    "clean-fid": "0.1.35",
+    "kagglehub": "1.0.2",
+    "Pillow": "12.3.0",
+    "tqdm": "4.70.1"
+  },
+  "training_framework_parameters": {
+    "teacher_with_ema": 69597510,
+    "consistency_with_ema": 69597510,
+    "one_pass_with_fake_score_and_gan_head": 69991239
+  },
+  "excluded": [
+    "image dataset",
+    "external pretrained weights",
+    "optimizer snapshots",
+    "teacher checkpoint",
+    "uncompleted experimental branches",
+    "credentials"
+  ],
+  "team_directory": "team_20",
+  "members": [
+    "brave_panda",
+    "brave_rabbit",
+    "happy_fox"
+  ]
+}

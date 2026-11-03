@@ -1,0 +1,3 @@
+{"mode": "one_nfe", "parameters": 34798755, "actual_backbone_calls": 1, "shape": [2, 3, 64, 64], "finite": true}
+{"mode": "few_nfe", "parameters": 34798755, "actual_backbone_calls": 4, "shape": [2, 3, 64, 64], "finite": true}
+PASS: official files/base class unchanged; both checkpoints load at required paths; NFE, shapes, ranges, and caps verified.

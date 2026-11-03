@@ -1,0 +1,23 @@
+{
+  "entry_point": "repository-root evaluate.py",
+  "evaluate_sha256": "f201320f3505ad478096313eedf657388a0c6aca4af456095509e13807228adb",
+  "generated_count_per_model": 3020,
+  "validation_reference_count": 3020,
+  "results": [
+    {
+      "mode": "one_nfe",
+      "fid": 38.6546,
+      "seed": 10789,
+      "batch_size": 8,
+      "checkpoint_sha256": "68c975311148d0c0eed7587210c49282bd44331b19d6345e9ccff1885b1942dd"
+    },
+    {
+      "mode": "few_nfe",
+      "fid": 26.3088,
+      "seed": 0,
+      "batch_size": 32,
+      "checkpoint_sha256": "0a96dc7f893a08c2dfd2832152644f07eacd56fc1e09407adf9d433f4d7e8692"
+    }
+  ],
+  "note": "Recorded completed root-evaluator runs on these exact code/checkpoint hashes; TA results are official."
+}

@@ -1,0 +1,33 @@
+Teacher: 189,411 parameters; live + EMA: 378,822
+{"step": 1, "kimg": 0.002, "loss": 1.3728272318840027, "lr": 4e-09, "grad_norm": 1.0246754884719849, "elapsed_seconds": 0.03831454104511067, "peak_allocated_gb": 0.0, "peak_reserved_gb": 0.0}
+Teacher: 189,411 parameters; live + EMA: 378,822
+{"step": 2, "kimg": 0.004, "loss": 1.8513498604297638, "lr": 8e-09, "grad_norm": 1.1408621072769165, "elapsed_seconds": 0.053575333033222705, "peak_allocated_gb": 0.0, "peak_reserved_gb": 0.0}
+All 6 training images; balanced classes; no validation loaded. Student 189,411; student + EMA 378,822; separate frozen teacher 189,411
+{"step": 1, "kimg": 0.002, "loss": 0.09948886674828827, "lr": 0.0001, "grad_norm": 0.7052558660507202, "step_seconds": 0.025110416987445205, "elapsed_seconds": 0.02511129097547382, "peak_allocated_gb": 0}
+Teacher cache 1/9
+Teacher cache 9/9
+DMD: generator + fake score 444,871; separate teacher 189,411; no EMA; 3 fake-score updates per generator update; start step 0
+{"step": 1, "dm_surrogate": 5.723825141070935e-19, "reg_loss": 0.43401969969272614, "fake_loss": 0.8796347081661223, "fake_updates": 3, "gan_active": false, "reg_weight": 0.25, "gan_g": 0.0, "gan_d": 0.0, "gan_real_accuracy": 0.0, "gan_fake_accuracy": 0.0, "image_std": 0.0032233831007033587, "out_of_range_fraction": 0.0, "grad_norm": 0.08602739870548248, "elapsed_seconds": 0.052960374974645674, "peak_allocated_gb": 0}
+DMD: generator + fake score 444,871; separate teacher 189,411; no EMA; 3 fake-score updates per generator update; start step 1
+{"step": 2, "dm_surrogate": 2.9303605060704285e-05, "reg_loss": 0.42398592829704285, "fake_loss": 0.3063757946559538, "fake_updates": 3, "gan_active": true, "reg_weight": 0.025, "gan_g": 0.7498931586742401, "gan_d": 1.3443533778190613, "gan_real_accuracy": 0.3333333333333333, "gan_fake_accuracy": 0.9999999999999999, "image_std": 0.003055763663724065, "out_of_range_fraction": 0.0, "grad_norm": 0.0065834252163767815, "elapsed_seconds": 0.08116820798022673, "peak_allocated_gb": 0}
+{
+  "teacher": {
+    "source": "/private/var/folders/09/6393pkg13tg4nby68wfnb5kr0000gn/T/tmppnx4d5c8/exports-fixture/teacher/teacher.ckpt",
+    "parameters": 189411,
+    "source_sha256": "865d10fc51e39a0c49bfb38b84c197c2a4e1028cf6bc197f10430b20eeb24198",
+    "export_sha256": "26885b46482b4c315b7aa944c47a6cf94f930fb234be8704865aa347fd51674e"
+  },
+  "one_nfe": {
+    "source": "/private/var/folders/09/6393pkg13tg4nby68wfnb5kr0000gn/T/tmppnx4d5c8/exports-fixture/one-adversarial/snapshots/one_nfe-005000.ckpt",
+    "parameters": 189411,
+    "source_sha256": "7a3b318689a99492f66df3e8d452e6eec62fc223978880da3eb501e680921d51",
+    "export_sha256": "61160dae821f3cdfc248f72c9c29a6975a5872142a439062388a806ab6a006d5"
+  },
+  "few_nfe": {
+    "source": "/private/var/folders/09/6393pkg13tg4nby68wfnb5kr0000gn/T/tmppnx4d5c8/exports-fixture/few-refine/snapshots/student-002000.ckpt",
+    "parameters": 189411,
+    "source_sha256": "47d1837f6aa89c1410ad135f10d443c5a5a7b37f075a38dcfd62a4cacd342995",
+    "export_sha256": "00ceb576b827d3a1cf4af1729614f690a0320b8466cef9cd0aab925abacaaab2"
+  }
+}
+PASS: standalone imports, fixed splits, teacher train/resume, 1/4 actual NFE, consistency training, cache, adversarial stage transition/resume, and exports.
