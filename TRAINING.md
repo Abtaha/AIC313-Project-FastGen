@@ -214,3 +214,26 @@ and CC BY-NC-SA 4.0 license are retained under `src/edm/`. Methods follow
 [Consistency Models](https://arxiv.org/abs/2303.01469), and
 [DMD](https://arxiv.org/abs/2311.18828), and
 [DMD2](https://arxiv.org/abs/2405.14867), with the adaptations documented above.
+
+## Teacher checkpoint retention
+
+Teacher training retains EMA exports every 5,000 steps and complete resumable
+states every 20,000 steps in the run's `snapshots/` directory. The latest
+`teacher.ckpt` and `training-state.pt` still update every `--save-every` steps.
+Use `--snapshot-every` and `--state-snapshot-every` to change retention intervals
+(multiples of `--save-every`; zero disables that type).
+
+For the existing 200k run, started before retention was added, a separate CPU
+watcher preserves the first available save and subsequent scheduled saves without
+restarting the GPU job:
+
+```bash
+.venv/bin/python -m training.retain_checkpoints \
+  --outdir checkpoints/teacher-200k \
+  --exit-status results/teacher-200k.exit-status
+```
+
+The watcher must remain running (the server uses tmux session `teacher_retention`).
+Retention uses hard links to completed atomic saves; later checkpoint replacements
+do not alter saved snapshots. The 200k run needs approximately 11 GB for scheduled
+snapshots, plus its initial preserved save and latest files.

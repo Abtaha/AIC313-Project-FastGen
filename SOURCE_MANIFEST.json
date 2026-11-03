@@ -103,7 +103,7 @@
     "README.md": "ad6db88a77e30cbe6c4970b27ae9df349ebafa7f0255b37c6569d1546ec51cba",
     "REFERENCE_RESULTS.json": "60b78de2758f76a444c77cec1754d048da518767a6017658ac38b21af33ac202",
     "SUBMISSION_MANIFEST.json": "60c1634be656f77a63e8df53335ee2ba637a3e0cbf630b92c13e05a54a8d8ec1",
-    "TRAINING.md": "ed4f1ebab39b130d16ed738406464c274fc1b12c6865abdd3eb7d53c1992592c",
+    "TRAINING.md": "dbaf7388d6cfb3db39301162e068e019fc032bc4e3f321ab7630246a88b9bf35",
     "_common.py": "d062a1ff1af70a39841ced712b27b326080e64c3faa91aaff3af04e8610bd817",
     "check_submission.py": "99b67f628109996bde58075d38500fcd84574dd4e0f3b128019eef5f9b588354",
     "checkpoints/few_nfe.ckpt": "0a96dc7f893a08c2dfd2832152644f07eacd56fc1e09407adf9d433f4d7e8692",
@@ -139,12 +139,14 @@
     "train_one_nfe.py": "d273e7cba88f176f778900ec5d835785f31743d43e4362c42c067bcfdee871d9",
     "train_teacher.py": "a49d5758197473c65d24b0f671f81a8e605937e53b55003792bdd03dc8112ce3",
     "training/__init__.py": "370b6b52d5b62b46477fb18b33db870fe9aebb12a7d2e09ec46d3015448e8ec8",
-    "training/teacher.py": "1ef2b940fecebce7216a5e1890756b770d91aac8a4c01cb80141656b747949f8",
+    "training/teacher.py": "6dab82cf04469a427b0265d22376e2c2c0effd1de38623108dd4ebbfc9fbbae2",
     "validation/check_submission.log": "1b3f17391889e262c32772b5afa8f9a29d332213db57b76e15b41533198a5105",
     "validation/root_evaluation.json": "94cd3ae58e881a125d9440afdb7379f588b6f80e95024c85f59a8cc15ab92558",
     "validation/training-smoke.log": "a87e20083a31fa164b37316dd5bff27d8a78be08edc8d129db6aafbddd8a4e72",
-    "verify.py": "5559c7117ada7862392bf8ab8b784eba91da27f4e20ac243a573c276143c3342"
+    "verify.py": "5559c7117ada7862392bf8ab8b784eba91da27f4e20ac243a573c276143c3342",
+    "training/retain_checkpoints.py": "aeac7670b1635101042acf2b8f5fd150292f7f0f6c4756e61bca433c3e664ccf"
   },
   "one_nfe_recipe_source_revision": "89827cef",
-  "submission_adaptation": "Root README and TA dependency list supplied for midterm packaging; core model/training code unchanged."
+  "submission_adaptation": "Root README and TA dependency list supplied for midterm packaging; core model/training code unchanged.",
+  "branch_adaptation": "Midterm baseline retained in commit 54de8fb2; checkpoint retention added to teacher training and a live-run watcher."
 }

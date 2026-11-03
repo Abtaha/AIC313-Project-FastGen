@@ -15,6 +15,7 @@ from torch.utils.data import DataLoader, Subset
 
 from dataset import PokemonDataset
 from teacher import EDMTeacher, TeacherConfig
+from training.retain_checkpoints import retain
 from teacher_monitor import (denoising_losses, holdout_fid, save_monitor_split,
                              split_fingerprint, stratified_holdout)
 
@@ -51,6 +52,9 @@ def train(args):
         raise ValueError("grad-clip must be positive and early-stop-patience nonnegative")
     if args.early_stop_patience and not args.loss_every:
         raise ValueError("Early stopping requires loss monitoring")
+    for interval in (args.snapshot_every, args.state_snapshot_every):
+        if interval < 0 or (interval and interval % args.save_every):
+            raise ValueError("Snapshot intervals must be zero or multiples of save-every")
     device = torch.device(args.device)
     if device.type == "cuda" and not torch.cuda.is_available():
         raise RuntimeError("CUDA unavailable; use --device cpu for a smoke test")
@@ -186,6 +190,12 @@ def train(args):
             "rng_loader": loader_generator.get_state(),
             "rng_cuda": torch.cuda.get_rng_state_all() if device.type == "cuda" else None,
         }, output / "training-state.pt")
+        for name, prefix, interval in (
+            ("teacher.ckpt", "teacher", args.snapshot_every),
+            ("training-state.pt", "training-state", args.state_snapshot_every),
+        ):
+            if interval and (step % interval == 0 or step == args.steps):
+                retain(output / name, output / "snapshots", step, prefix)
 
     for step in range(start_step + 1, args.steps + 1):
         lr = args.lr * min((seen_images + args.batch_size) / max(args.lr_rampup_kimg * 1000, 1), 1)
@@ -303,6 +313,8 @@ def parser():
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--resume")
     p.add_argument("--save-every", type=int, default=1000)
+    p.add_argument("--snapshot-every", type=int, default=5000, help="Retain EMA exports; 0 disables")
+    p.add_argument("--state-snapshot-every", type=int, default=20000, help="Retain resumable states; 0 disables")
     p.add_argument("--log-every", type=int, default=50)
     p.add_argument("--sample-every", type=int, default=1000)
     p.add_argument("--sample-steps", type=int, default=40)
