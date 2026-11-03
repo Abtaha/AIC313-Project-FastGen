@@ -227,6 +227,7 @@ def main():
     if args.task=='prepare': prepare(args)
     elif args.task=='evaluate': evaluate(args)
     else:
+        (args.workdir/f'{args.task}-failed.json').unlink(missing_ok=True)
         try:
             {'teacher':teacher_run,'student':student_run}[args.task](args)
         except Exception as error:
