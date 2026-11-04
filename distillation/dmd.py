@@ -15,6 +15,7 @@ import torch
 from torch.nn import functional as F
 
 from teacher import EDMTeacher
+from training.holdout import partition, require_same_partition
 from .model import ConsistencyStudent
 from .support import matching_loss
 from .train import atomic_save, check_memory, file_hash
@@ -139,6 +140,9 @@ def train(args):
     source = torch.load(args.student, map_location="cpu", weights_only=True)
     base = torch.load(args.teacher, map_location="cpu", weights_only=True)
     cache = torch.load(args.cache, map_location="cpu", weights_only=True)
+    data_partition = partition(args.split_dir)
+    require_same_partition(base.get("data_partition"), data_partition)
+    require_same_partition(source.get("data_partition"), data_partition)
     mapping = source["category_to_id"]
     if mapping != base["category_to_id"] or mapping != cache["identity"]["category_to_id"]:
         raise ValueError("Teacher, student, and cache mappings differ")
@@ -166,6 +170,8 @@ def train(args):
     identity = {"teacher_sha256": teacher_hash, "student_sha256": file_hash(args.student),
                 "cache_sha256": file_hash(args.cache), "recipe": {k: getattr(args,k) for k in (
                     "guidance", "lr", "fake_lr", "reg_weight", "score_warmup", "batch_size", "amp", "seed", "fake_updates", "reg_decay_start", "reg_decay_end", "generator_freeze_until", "generator_gan_weight")}}
+    if data_partition:
+        identity["data_partition"] = data_partition
     if head is not None:
         identity["recipe"].update({key: getattr(args, key) for key in (
             "gan_weight", "gan_start", "gan_reg_weight")})
@@ -203,7 +209,10 @@ def train(args):
         "gan_training_images": real_images.training_count if real_images is not None else 0,
         "adaptations": "consistency initialization; lognormal EDM sigma .05..20; multiscale L2 regression"}, indent=2)+"\n")
     if not args.resume:
-        atomic_save(generator.export(category_to_id=mapping, step=start, guidance=args.guidance), output/"initial.ckpt")
+        initial_export=generator.export(category_to_id=mapping, step=start, guidance=args.guidance)
+        if data_partition:
+            initial_export["data_partition"]=data_partition
+        atomic_save(initial_export, output/"initial.ckpt")
     fit = (~cache["heldout"]).nonzero().flatten()
     c = generator.config
     clock = time.monotonic()
@@ -308,6 +317,8 @@ def train(args):
                     category=cache["labels"][ids].to(device),latents=cache["latents"][ids].to(device))
             save_image((samples+1)/2,output/f"samples-{step:06d}.png",nrow=4)
             exported = generator.export(category_to_id=mapping,step=step,guidance=args.guidance)
+            if data_partition:
+                exported["data_partition"] = data_partition
             exported["training_recipe"] = "DMD-adapted-v1"
             if head is not None:
                 exported["training_recipe"] = "DMD2-inspired-gan-v1"

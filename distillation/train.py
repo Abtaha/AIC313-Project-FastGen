@@ -14,6 +14,7 @@ from torch.utils.data import DataLoader, WeightedRandomSampler
 
 from dataset import PokemonDataset
 from teacher import EDMTeacher
+from training.holdout import partition, require_same_partition
 from .loss import consistency_loss, noise_grid
 from .model import ConsistencyStudent
 
@@ -67,12 +68,15 @@ def train(args):
     if device.type == "cuda":
         torch.cuda.manual_seed_all(args.seed)
         torch.cuda.reset_peak_memory_stats(device)
+    data_partition = partition(args.split_dir)
     teacher_metadata = torch.load(args.teacher, map_location="cpu", weights_only=True)
+    require_same_partition(teacher_metadata.get("data_partition"), data_partition)
     teacher = EDMTeacher.load_checkpoint(args.teacher, device=device)
     student = ConsistencyStudent.from_teacher(teacher).train()
     initialization = None
     if args.init_student:
         metadata = torch.load(args.init_student, map_location="cpu", weights_only=True)
+        require_same_partition(metadata.get("data_partition"), data_partition)
         initial = ConsistencyStudent.load_checkpoint(args.init_student, device="cpu")
         if (initial.config != student.config or
                 metadata.get("category_to_id") != teacher_metadata.get("category_to_id") or
@@ -110,6 +114,8 @@ def train(args):
                 "recipe": {key: getattr(args, key) for key in (
                     "guidance", "batch_size", "num_intervals", "lr", "ema_decay", "loss",
                     "warmup_steps", "amp", "hflip", "seed")}}
+    if data_partition:
+        identity["data_partition"] = data_partition
     if initialization is not None:
         identity["initialization"] = initialization
     optimizer = torch.optim.Adam(student.parameters(), lr=args.lr, betas=(0.9, 0.999))
@@ -188,6 +194,8 @@ def train(args):
             check_memory(device, args.memory_limit_gb)
         if step % args.save_every == 0 or step == args.steps:
             exported = target.export(category_to_id=mapping, step=step, guidance=args.guidance)
+            if data_partition:
+                exported["data_partition"] = data_partition
             if initialization is not None:
                 exported["initialization"] = initialization
             atomic_save(exported, output / "student.ckpt")

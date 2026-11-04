@@ -12,7 +12,6 @@ import tempfile
 
 import torch
 from torch.utils.data import DataLoader, Subset
-from torchvision.utils import save_image
 
 
 def stratified_holdout(category_ids, fraction, seed):
@@ -63,8 +62,9 @@ def denoising_losses(model, dataset, indices, *, device, batch_size, seed, limit
 
 @torch.no_grad()
 def holdout_fid(model, dataset, holdout_indices, class_probabilities, *, outdir,
-                device, batch_size=16, count=5000, steps=18, guidance=1.0, seed=1234):
+                device, batch_size=16, count=5000, steps=18, guidance=1.0, seed=1234, balanced=False):
     from cleanfid import fid
+    from torchvision.transforms.functional import to_pil_image
 
     if count < 2 or len(holdout_indices) < 2:
         raise ValueError("FID requires at least two reference and generated images")
@@ -79,12 +79,21 @@ def holdout_fid(model, dataset, holdout_indices, class_probabilities, *, outdir,
         index = 0
         for images, _ in loader:
             for image in images:
-                save_image((image + 1) / 2, reference / f"{index:06d}.png")
+                to_pil_image(((image.float()+1)/2).clamp(0,1)).convert("RGB").save(reference / f"{index:06d}.png")
                 index += 1
         # Reset the seed for comparable labels and noise across guidance sweeps.
         label_generator = torch.Generator().manual_seed(seed)
-        labels = torch.multinomial(class_probabilities.cpu(), count,
-                                   replacement=True, generator=label_generator)
+        if balanced:
+            classes=model.config.num_classes
+            if count % classes:
+                raise ValueError('Balanced FID count must be a multiple of the class count')
+            counts=torch.bincount(torch.tensor([dataset.category_ids[i] for i in holdout_indices]),minlength=classes)
+            if not torch.all(counts==counts[0]):
+                raise ValueError('Balanced FID requires a balanced reference partition')
+            labels=torch.arange(classes).repeat_interleave(count//classes)
+        else:
+            labels = torch.multinomial(class_probabilities.cpu(), count,
+                                       replacement=True, generator=label_generator)
         noise_generator = torch.Generator(device=device).manual_seed(seed)
         for start in range(0, count, batch_size):
             categories = labels[start:start + batch_size].to(device)
@@ -94,7 +103,7 @@ def holdout_fid(model, dataset, holdout_indices, class_probabilities, *, outdir,
                 guidance=guidance, generator=noise_generator,
             )
             for offset, image in enumerate(images):
-                save_image((image.cpu() + 1) / 2, generated / f"{start + offset:06d}.png")
+                to_pil_image(((image.float().cpu()+1)/2).clamp(0,1)).convert("RGB").save(generated / f"{start + offset:06d}.png")
         return float(fid.compute_fid(str(generated), str(reference), device=device,
                                     batch_size=batch_size, num_workers=0))
 

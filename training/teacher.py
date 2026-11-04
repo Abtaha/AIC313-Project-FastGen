@@ -17,6 +17,8 @@ from torch.utils.data import DataLoader, Subset
 from dataset import PokemonDataset
 from teacher import EDMTeacher, TeacherConfig
 from training.retain_checkpoints import retain
+from training.holdout import partition, require_same_partition
+from dataset import read_split
 from teacher_monitor import (denoising_losses, holdout_fid, save_monitor_split,
                              split_fingerprint, stratified_holdout)
 
@@ -82,14 +84,23 @@ def train(args):
         category_to_id = json.load(f)
     if sorted(category_to_id.values()) != list(range(len(category_to_id))):
         raise ValueError("category_to_id.json must contain contiguous IDs from zero")
-    # Instantiate only the training dataset: no validation image is read.
+    data_partition = partition(split_dir)
+    source_manifest = (split_dir / data_partition['source_train_manifest']) if data_partition else split_dir / 'train_split.txt'
+    # A clean partition loads the permitted train manifest, never official validation.
     dataset = PokemonDataset(
-        args.data_root, split_dir / "train_split.txt", return_category=True,
+        args.data_root, source_manifest, return_category=True,
         category_to_id=category_to_id,
     )
-    fit_indices, holdout_indices = stratified_holdout(
-        dataset.category_ids, args.holdout_fraction, args.seed
-    )
+    if data_partition:
+        fit_paths=set(read_split(split_dir/'train_split.txt'))
+        holdout_paths=set(read_split(split_dir/'val_split.txt'))
+        fit_indices=[i for i,path in enumerate(dataset.paths) if path in fit_paths]
+        holdout_indices=[i for i,path in enumerate(dataset.paths) if path in holdout_paths]
+        print(json.dumps({'data_partition': data_partition}), flush=True)
+    else:
+        fit_indices, holdout_indices = stratified_holdout(
+            dataset.category_ids, args.holdout_fraction, args.seed
+        )
     if (args.loss_every or args.fid_every) and len(holdout_indices) < 2:
         raise ValueError("Monitoring needs a holdout; or set --loss-every 0 --fid-every 0")
     if len(fit_indices) < args.microbatch:
@@ -123,6 +134,7 @@ def train(args):
     initialization = None
     if args.init_teacher:
         source = torch.load(args.init_teacher, map_location="cpu", weights_only=True)
+        require_same_partition(source.get("data_partition"), data_partition)
         if (source.get("format") != "fastgen-edm-teacher-v1" or source["config"] != asdict(config)
                 or source["category_to_id"] != category_to_id):
             raise ValueError("Initial teacher architecture/category mapping differs")
@@ -137,6 +149,7 @@ def train(args):
         del source
     if args.resume:
         state = torch.load(args.resume, map_location="cpu", weights_only=True)
+        require_same_partition(state.get("data_partition"), data_partition)
         if state["config"] != asdict(config) or state["category_to_id"] != category_to_id:
             raise ValueError("Resume architecture/category mapping differs from this run")
         if state["batch_size"] != args.batch_size:
@@ -167,7 +180,7 @@ def train(args):
         raise ValueError("steps must exceed the starting checkpoint step")
     (output / "config.json").write_text(json.dumps(
         {"teacher": asdict(config), "training": vars(args),
-         "category_to_id": category_to_id, "initialization": initialization}, indent=2
+         "category_to_id": category_to_id, "initialization": initialization, "data_partition": data_partition}, indent=2
     ) + "\n")
     save_monitor_split(dataset, fit_indices, holdout_indices, output / "monitor-split.json")
     class_probabilities = torch.bincount(
@@ -196,10 +209,12 @@ def train(args):
                     f"GB exceeds {args.memory_limit_gb} GB; reduce --microbatch"
                 )
 
-    def save(step):
-        metadata = {"category_to_id": category_to_id, "step": step,
+    def checkpoint_metadata(step):
+        return {"category_to_id": category_to_id, "step": step,
                     "seen_images": seen_images, "class_probabilities": class_probabilities,
-                    "train_manifest_sha256": split_fingerprint(dataset)}
+                    "train_manifest_sha256": split_fingerprint(dataset), "data_partition": data_partition}
+    def save(step):
+        metadata = checkpoint_metadata(step)
         atomic_save({**ema.checkpoint(), **metadata}, output / "teacher.ckpt")
         atomic_save({
             "config": asdict(config), **metadata, "initialization": initialization, "model": model.state_dict(),
@@ -282,8 +297,7 @@ def train(args):
             if best_holdout_loss is None or value < best_holdout_loss:
                 best_holdout_loss = value
                 stale_checks = 0
-                atomic_save({**ema.checkpoint(), "step": step, "holdout_loss": value,
-                             "category_to_id": category_to_id, "class_probabilities": class_probabilities},
+                atomic_save({**ema.checkpoint(), **checkpoint_metadata(step), "holdout_loss": value},
                             output / "best-loss.ckpt")
             else:
                 stale_checks += 1
@@ -293,6 +307,7 @@ def train(args):
                 ema, dataset, holdout_indices, class_probabilities, outdir=output,
                 device=device, batch_size=args.microbatch, count=args.fid_count,
                 steps=args.fid_steps, guidance=args.guidance, seed=args.seed + 1234,
+                balanced=bool(data_partition),
             )
             if not math.isfinite(score):
                 raise RuntimeError("Non-finite holdout FID")
@@ -300,9 +315,8 @@ def train(args):
                                   fid_count=args.fid_count, fid_steps=args.fid_steps)
             if best_fid is None or score < best_fid:
                 best_fid = score
-                atomic_save({**ema.checkpoint(), "step": step, "holdout_fid": score,
-                             "guidance": args.guidance, "category_to_id": category_to_id,
-                             "class_probabilities": class_probabilities}, output / "best-fid.ckpt")
+                atomic_save({**ema.checkpoint(), **checkpoint_metadata(step), "holdout_fid": score,
+                             "guidance": args.guidance}, output / "best-fid.ckpt")
         if len(monitor_record) > 1:
             check_memory()
             with (output / "monitor.jsonl").open("a") as f:

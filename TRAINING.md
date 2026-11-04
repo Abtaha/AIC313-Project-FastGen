@@ -289,3 +289,35 @@ warmup steps and up to 1,000 generator updates. Evaluate at 5250, 5500, 5750,
 6000 and 6100 using the existing training-only reference. From step 5500 onward,
 a branch stops if its FID is over three points worse than its matched control.
 Outputs, plan, per-arm status and comparisons are under `one-followups/`.
+
+## Fresh teacher with an untouched holdout
+
+`data/holdout-v1/` is a separate experimental split of the permitted training
+images: 15,569 fitting images and 1,510 holdout images (10 per category), selected
+with seed 20261104. The provided split files are unchanged. `partition.json`
+records hashes, counts, source manifest and the sampling seed. The split can be
+recreated with `python -m training.holdout --outdir NEW_DIRECTORY`.
+
+Start the fresh V1 teacher with:
+
+```bash
+python -m experiments.train_holdout_teacher
+```
+
+Use `--resume` after interruption, or `--dry-run` to print the command. The fixed
+budget is 100k updates, batch 128, microbatch 32, BF16, LR 2e-4, and the original
+V1 architecture/objective/EMA. It initializes randomly. Denoising losses use
+fixed noise every 2k steps. EMA FID on the unseen, class-balanced holdout uses
+1,510 generated images, 18 Heun steps and guidance 2 every 10k updates. These
+holdout FIDs are distinct from official-reference FID. Snapshots are retained
+and `best-fid.ckpt` is selected using this holdout, not the official validation
+set. Defaults write to `runs/holdout-v1/teacher/`.
+
+For subsequent consistency/student/DMD/GAN training, pass the same
+`--split-dir data/holdout-v1` and use teacher/student checkpoints from this fresh
+chain. Checkpoints carry the partition metadata. Training rejects mixing a
+clean checkpoint with the original full split, altered manifests, or old
+initialization weights without matching clean-partition provenance. The
+consistency and GAN loaders read only the fitting manifest. Synthetic teacher
+pairs inherit the frozen clean teacher's provenance through its checkpoint hash.
+Legacy experiments and submitted checkpoints remain separate.
