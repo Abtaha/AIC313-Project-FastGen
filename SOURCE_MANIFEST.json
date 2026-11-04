@@ -103,7 +103,7 @@
     "README.md": "ad6db88a77e30cbe6c4970b27ae9df349ebafa7f0255b37c6569d1546ec51cba",
     "REFERENCE_RESULTS.json": "60b78de2758f76a444c77cec1754d048da518767a6017658ac38b21af33ac202",
     "SUBMISSION_MANIFEST.json": "60c1634be656f77a63e8df53335ee2ba637a3e0cbf630b92c13e05a54a8d8ec1",
-    "TRAINING.md": "cfcc47d0ffa6a73d768960273b9dfc0c2ed1f50e15571144fd6b74d2f56a84bc",
+    "TRAINING.md": "023ccec4b30f276dbf98ceb28505085d221c7443ca73de304dda8c77dc8a4e9e",
     "_common.py": "d062a1ff1af70a39841ced712b27b326080e64c3faa91aaff3af04e8610bd817",
     "check_submission.py": "99b67f628109996bde58075d38500fcd84574dd4e0f3b128019eef5f9b588354",
     "checkpoints/few_nfe.ckpt": "0a96dc7f893a08c2dfd2832152644f07eacd56fc1e09407adf9d433f4d7e8692",
@@ -114,7 +114,7 @@
     "dataset.py": "47aea2b4ae6833198cbfa0801e0cc63fd5425dbe72bb77aec7f19a97ad90d063",
     "distillation/__init__.py": "eb4061fa4dc809c096ac6c7a7f747255a9306222aac3c3d9f5e44c9e6532c8f9",
     "distillation/adversarial.py": "cc5cca7d05345dbeff111b20d55d4bde90f64593f5e3e9329e0426c1d411ccbb",
-    "distillation/dmd.py": "9da00f4c576679f31ae8ceae3eaa7996bf5c075a3e68eb44feec115f177a59f8",
+    "distillation/dmd.py": "8fa6dd5951032babe52718fbc635cd6efbd60be0e331fe4ef0e9f964d7e27fed",
     "distillation/loss.py": "f3c77c20ab702a10d41764d948539b6e329e27286eef742df17ba29d5efd7d44",
     "distillation/model.py": "64a27e59d8e1e0c471dfb22a88d3598b0e040033b95e5c658e332faeabde6230",
     "distillation/support.py": "1ab27d00187cef203fa8c29da3e5a4a069151ee8457dfad18916c93a179dd93f",
@@ -145,8 +145,8 @@
     "validation/training-smoke.log": "a87e20083a31fa164b37316dd5bff27d8a78be08edc8d129db6aafbddd8a4e72",
     "verify.py": "5559c7117ada7862392bf8ab8b784eba91da27f4e20ac243a573c276143c3342",
     "training/retain_checkpoints.py": "aeac7670b1635101042acf2b8f5fd150292f7f0f6c4756e61bca433c3e664ccf",
-    "experiments/refinement.py": "8185b1272173b7210b32fa989860efb2d259f39e5bddd93685d117da7818ba3e",
-    "tests/test_refinement.py": "7540c2259fe5b7be63c23779236389c386f0f5877a42e1d781103ffbc3dbfdb5"
+    "experiments/refinement.py": "d8e809a7e0c4b10c095de9ece6f718d6c0e527bc6e15e34bfd40c8409388db48",
+    "tests/test_refinement.py": "8d69363f74377a12955421c13491ed4ab29e600fb7d77de2d847a11038fb4d62"
   },
   "one_nfe_recipe_source_revision": "89827cef",
   "submission_adaptation": "Root README and TA dependency list supplied for midterm packaging; core model/training code unchanged.",

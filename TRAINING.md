@@ -277,3 +277,15 @@ fixed `[80, 5, .5, .02]` sampling schedule remain the same. The baseline and all
 eight snapshots are evaluated against the same training-only monitoring set;
 results are written to `few-comparison.json`. The submitted checkpoints are
 preserved separately.
+
+`--task one` runs two further one-pass experiments using the completed `fixed5`
+branch as a matched control. `gan-g01` changes only the generator adversarial
+coefficient from .003 to .01; the critic coefficient stays .003. `cache16`
+changes only the paired target cache from two to 16 fitting examples per class
+(plus one synthetic monitoring example). Cache generation uses the original
+40-step, guidance-2 teacher. Both retain regression .025 and restore the same
+5k generator/fake-score/GAN/optimizer parent state, with the same 100 score-only
+warmup steps and up to 1,000 generator updates. Evaluate at 5250, 5500, 5750,
+6000 and 6100 using the existing training-only reference. From step 5500 onward,
+a branch stops if its FID is over three points worse than its matched control.
+Outputs, plan, per-arm status and comparisons are under `one-followups/`.

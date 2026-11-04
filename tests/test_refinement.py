@@ -36,6 +36,14 @@ def main():
     changed['gan_excluded_manifest_sha256']='monitor'
     assert compatible_identity(original,changed,fork=True)
     assert not compatible_identity(original,changed)
+    cache_change=copy.deepcopy(original)
+    original['cache_sha256']='old'
+    cache_change['cache_sha256']='new'
+    assert not compatible_identity(original,cache_change,fork=True)
+    assert compatible_identity(original,cache_change,fork=True,refresh_cache=True)
+    cache_change['teacher_sha256']='different'
+    assert not compatible_identity(original,cache_change,fork=True,refresh_cache=True)
+    changed['cache_sha256']='old'
     changed['recipe']['lr']=1e-4
     assert not compatible_identity(original,changed,fork=True)
     with tempfile.TemporaryDirectory() as folder:
@@ -73,6 +81,17 @@ def main():
             for key,value in student.state_dict().items():
                 torch.testing.assert_close(first['generator'][key],value)
             assert not first['optimizer']['state']
+            boost=copy.deepcopy(args)
+            boost.outdir=str(root/'boost-warmup')
+            boost.generator_gan_weight=.01
+            train_dmd(boost)
+            boosted=torch.load(root/'boost-warmup/training-state.pt',weights_only=True)
+            for module in ('fake','gan_head'):
+                assert all(torch.equal(first[module][key],value) for key,value in boosted[module].items())
+            boost.resume=str(root/'boost-warmup/training-state.pt');boost.steps=2
+            train_dmd(boost)
+            boost_state=torch.load(root/'boost-warmup/training-state.pt',weights_only=True)
+            assert int(next(iter(boost_state['optimizer']['state'].values()))['step'])==1
             args.resume=str(root/'dmd/training-state.pt');args.steps=2
             train_dmd(args)
         final=torch.load(root/'dmd/training-state.pt',weights_only=True)

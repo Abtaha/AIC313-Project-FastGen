@@ -52,15 +52,18 @@ def gradient_surrogate(images, gradient):
     return 0.5 * (images - (images.detach()-gradient).detach()).square().mean()
 
 
-def compatible_identity(saved, requested, *, fork=False):
+def compatible_identity(saved, requested, *, fork=False, refresh_cache=False):
     """Strict resumes; explicit experiment forks may change ratio and regression schedule."""
-    defaults = dict(fake_updates=1, reg_decay_start=0, reg_decay_end=0, generator_freeze_until=0)
+    defaults = dict(fake_updates=1, reg_decay_start=0, reg_decay_end=0, generator_freeze_until=0, generator_gan_weight=None)
     saved = {**saved, "recipe": {**defaults, **saved["recipe"]}}
     requested = {**requested, "recipe": {**defaults, **requested["recipe"]}}
     if fork:
         for key in defaults:
             saved["recipe"].pop(key)
             requested["recipe"].pop(key)
+        if refresh_cache:
+            saved.pop("cache_sha256", None)
+            requested.pop("cache_sha256", None)
         saved.pop("gan_excluded_manifest_sha256", None)
         requested.pop("gan_excluded_manifest_sha256", None)
     return saved == requested
@@ -108,6 +111,8 @@ def train(args):
         raise ValueError("Positive intervals required; microbatch must divide batch-size")
     if min(args.lr, args.fake_lr) <= 0 or args.reg_weight <= 0 or args.score_warmup < 0:
         raise ValueError("Positive rates/regression weight and nonnegative warmup required")
+    if args.generator_gan_weight is not None and (args.generator_gan_weight < 0 or not args.gan_weight):
+        raise ValueError("Generator GAN weight requires an enabled GAN and must be nonnegative")
     if args.gan_weight < 0 or args.gan_reg_weight < 0 or (args.gan_weight and args.gan_start < args.score_warmup):
         raise ValueError("Nonnegative GAN weights required; GAN must start after score warmup")
     if (args.reg_decay_start < 0 or args.reg_decay_end < 0 or
@@ -160,7 +165,7 @@ def train(args):
         raise ValueError("Generator including auxiliary fake score or teacher exceeds 100M")
     identity = {"teacher_sha256": teacher_hash, "student_sha256": file_hash(args.student),
                 "cache_sha256": file_hash(args.cache), "recipe": {k: getattr(args,k) for k in (
-                    "guidance", "lr", "fake_lr", "reg_weight", "score_warmup", "batch_size", "amp", "seed", "fake_updates", "reg_decay_start", "reg_decay_end", "generator_freeze_until")}}
+                    "guidance", "lr", "fake_lr", "reg_weight", "score_warmup", "batch_size", "amp", "seed", "fake_updates", "reg_decay_start", "reg_decay_end", "generator_freeze_until", "generator_gan_weight")}}
     if head is not None:
         identity["recipe"].update({key: getattr(args, key) for key in (
             "gan_weight", "gan_start", "gan_reg_weight")})
@@ -176,7 +181,7 @@ def train(args):
     restore = args.resume or args.fork_from
     if restore:
         state = torch.load(restore, map_location="cpu", weights_only=True)
-        if not compatible_identity(state["identity"], identity, fork=bool(args.fork_from)):
+        if not compatible_identity(state["identity"], identity, fork=bool(args.fork_from), refresh_cache=args.fork_refresh_cache):
             raise ValueError("Resume recipe differs")
         generator.load_state_dict(state["generator"])
         fake.load_state_dict(state["fake"])
@@ -234,7 +239,8 @@ def train(args):
                         from .adversarial import frozen_parameters, random_flip
                         with frozen_parameters(fake, head):
                             gan_g = F.softplus(-head(fake, random_flip(images), labels)).mean()
-                        loss = loss + args.gan_weight*gan_g
+                        generator_gan_weight = args.gan_weight if args.generator_gan_weight is None else args.generator_gan_weight
+                        loss = loss + generator_gan_weight*gan_g
                         gan_g_total += float(gan_g.detach())*args.microbatch/args.batch_size
                     if not torch.isfinite(loss):
                         raise FloatingPointError("Nonfinite generator loss")
@@ -280,7 +286,7 @@ def train(args):
         check_memory(device,args.memory_limit_gb)
         if step == start+1 or step % args.log_every == 0:
             row = {"step":step,"dm_surrogate":dm_total,"reg_loss":reg_total,"fake_loss":fake_total,"fake_updates":args.fake_updates,
-                   "gan_active":gan_active,"generator_updated":update_generator,"reg_weight":reg_weight,"gan_g":gan_g_total,"gan_d":gan_d_total,
+                   "gan_active":gan_active,"generator_gan_weight":args.gan_weight if args.generator_gan_weight is None else args.generator_gan_weight,"generator_updated":update_generator,"reg_weight":reg_weight,"gan_g":gan_g_total,"gan_d":gan_d_total,
                    "gan_real_accuracy":real_accuracy,"gan_fake_accuracy":fake_accuracy,
                    "image_std":image_std,"out_of_range_fraction":saturation,
                    "grad_norm":float(norm),"elapsed_seconds":time.monotonic()-clock,
@@ -334,6 +340,8 @@ def parser():
     p.add_argument("--gan-weight",type=float,default=0,help="Enable shared-backbone adversarial head; 0 preserves legacy DMD")
     p.add_argument("--gan-start",type=int,default=2000,help="Enable GAN after this absolute generator-loop step")
     p.add_argument("--gan-reg-weight",type=float,default=.025,help="Regression weight once the GAN is active; 0 removes regression")
+    p.add_argument("--generator-gan-weight", type=float, help="Generator-only GAN coefficient; defaults to gan-weight, critic coefficient unchanged")
+    p.add_argument("--fork-refresh-cache", action="store_true", help="Allow an explicit fork to replace paired targets while retaining the same score teacher")
     p.add_argument("--reg-decay-start", type=int, default=0)
     p.add_argument("--reg-decay-end", type=int, default=0, help="Absolute loop step at which regression reaches zero; 0 disables decay")
     p.add_argument("--generator-freeze-until", type=int, default=0, help="Absolute loop step until which only the fake-score/GAN optimizer updates")

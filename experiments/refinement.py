@@ -175,6 +175,81 @@ def few_run(args):
     write(args.workdir/'few-complete.json',{'phase':'complete'})
 
 
+def one_run(args):
+    """Reuse the completed fixed5 control; change one objective/data factor per arm."""
+    from _common import options
+    import torch
+    parent=json.loads((args.baseline_root/'checkpoints/dmd-refined-gan/config.json').read_text())['arguments']
+    keys=('lr','fake_lr','guidance','reg_weight','score_warmup','gan_weight','gan_start','gan_reg_weight','amp','seed','batch_size')
+    common={k:parent[k] for k in keys}
+    for key in ('student','cache'):
+        common[key]=str((args.baseline_root/parent[key]).resolve())
+    common.update(teacher=str(args.workdir/'baseline/teacher.ckpt'),microbatch=8,fake_updates=5,
+                  memory_fraction=.34,memory_limit_gb=7.,log_every=25,save_every=250,
+                  generator_freeze_until=5100,diagnostic_every=250,diagnostic_count=32,
+                  gan_exclude_manifest=str(args.workdir/'monitor.txt'),
+                  data_root=str(ROOT/'data/pokemon-generation-one-22k'),split_dir=str(ROOT/'data/pokemon-generation-one-22k'))
+    output=args.workdir/'one-followups'
+    output.mkdir(exist_ok=True)
+    write(output/'plan.json',{'parent_sha256':digest(args.workdir/'baseline/dmd-parent.pt'),
+        'control':'fixed5, same parent, 100 score-only warmup + 1000 generator updates',
+        'arms':{'gan-g01':{'generator_gan_weight':.01,'critic_gan_weight':.003},
+                'cache16':{'fitting_pairs_per_class':16,'original_pairs_per_class':2}},
+        'early_stop':'After 400 generator updates, stop an arm if monitoring FID exceeds its matched-step control by more than 3.',
+        'official_validation_used':False})
+    for name in ('gan-g01','cache16'):
+        status=output/f'{name}-status.json'
+        if status.exists() and json.loads(status.read_text()).get('phase') in ('complete','stopped_for_quality'):
+            continue
+        settings=dict(common)
+        if name=='gan-g01':
+            settings['generator_gan_weight']=.01
+        else:
+            from types import SimpleNamespace
+            from teacher import EDMTeacher
+            from distillation.support import target_cache
+            path=output/'teacher-cache16.pt'
+            cache_args=SimpleNamespace(cache=str(path),guidance=2.,teacher_steps=40,seed=123,
+                                       train_per_class=16,microbatch=8,memory_limit_gb=6.)
+            write(status,{'phase':'generating_teacher_pairs','count':2567})
+            torch.cuda.set_per_process_memory_fraction(.30)
+            teacher=EDMTeacher.load_checkpoint(settings['teacher'],device='cuda')
+            metadata=torch.load(settings['teacher'],map_location='cpu',weights_only=True)
+            target_cache(cache_args,teacher,digest(settings['teacher']),metadata['category_to_id'],torch.device('cuda'))
+            del teacher,metadata
+            torch.cuda.empty_cache()
+            settings.update(cache=str(path),fork_refresh_cache=True)
+        out=output/name
+        state=out/'training-state.pt'
+        stopped=False
+        for step in (5250,5500,5750,6000,6100):
+            saved=torch.load(state,map_location='cpu',weights_only=True)['step'] if state.exists() else 5000
+            if saved<step:
+                write(status,{'phase':'training','target_step':step,'starting_step':saved})
+                restore=['--resume',state] if state.exists() else ['--fork-from',args.workdir/'baseline/dmd-parent.pt']
+                execute([sys.executable,'-u','-m','distillation.dmd',*options(settings),'--outdir',out,
+                         '--steps',str(step),*restore],output/f'{name}.log')
+            checkpoint=out/'snapshots'/f'one_nfe-{step:06d}.ckpt'
+            destination=output/'evaluations'/f'{name}-{step}'
+            write(status,{'phase':'evaluating','step':step})
+            execute(evaluation_command(args,checkpoint,'student',destination),output/'evaluation.log')
+            result=json.loads((destination/'fid.json').read_text())
+            control=json.loads((args.workdir/f'student-evaluations/fixed5-{step}/fid.json').read_text())
+            if step>=5500 and result['training_reference_fid']>control['training_reference_fid']+3:
+                write(status,{'phase':'stopped_for_quality','step':step,
+                    'training_reference_fid':result['training_reference_fid'],
+                    'matched_control_fid':control['training_reference_fid']})
+                stopped=True
+                break
+        if not stopped:
+            write(status,{'phase':'complete','step':6100})
+    rows=[]
+    for path in (output/'evaluations').glob('*/fid.json'):
+        rows.append({'experiment':path.parent.name,**json.loads(path.read_text())})
+    write(output/'comparison.json',sorted(rows,key=lambda row:row['training_reference_fid']))
+    write(args.workdir/'one-complete.json',{'phase':'complete'})
+
+
 def evaluate(args):
     import tempfile
     import torch
@@ -246,7 +321,7 @@ def evaluate(args):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--task',choices=['prepare','teacher','student','few','evaluate'],required=True)
+    parser.add_argument('--task',choices=['prepare','teacher','student','few','one','evaluate'],required=True)
     parser.add_argument('--baseline-root',type=Path,required=True)
     parser.add_argument('--teacher',type=Path,required=True)
     parser.add_argument('--workdir',type=Path,required=True)
@@ -261,7 +336,7 @@ def main():
     else:
         (args.workdir/f'{args.task}-failed.json').unlink(missing_ok=True)
         try:
-            {'teacher':teacher_run,'student':student_run,'few':few_run}[args.task](args)
+            {'teacher':teacher_run,'student':student_run,'few':few_run,'one':one_run}[args.task](args)
         except Exception as error:
             write(args.workdir/f'{args.task}-failed.json',{'error':str(error)})
             raise
