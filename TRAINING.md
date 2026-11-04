@@ -268,3 +268,12 @@ The student runner executes `decay5` first, then its matched `fixed5` control,
 retaining samples, diagnostics, snapshot scores and wall-clock timings. It does
 not replace the submitted model checkpoints. Student branches deliberately use
 the existing frozen teacher rather than the simultaneously refined teacher.
+
+For the next four-pass refinement, run the same experiment entry point with
+`--task few`. It initializes live and EMA student weights from the preserved
+best four-pass export with a fresh Adam optimizer, trains 2,000 updates at 5e-6,
+and saves every 250 steps. Teacher, loss, EMA decay, balanced sampling and the
+fixed `[80, 5, .5, .02]` sampling schedule remain the same. The baseline and all
+eight snapshots are evaluated against the same training-only monitoring set;
+results are written to `few-comparison.json`. The submitted checkpoints are
+preserved separately.

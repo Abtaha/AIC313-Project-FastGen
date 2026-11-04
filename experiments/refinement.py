@@ -144,6 +144,37 @@ def student_run(args):
     write(args.workdir/'student-complete.json',{'phase':'complete'})
 
 
+def few_run(args):
+    from _common import options
+    import torch
+    recipes=json.loads((ROOT/'recipes.json').read_text())
+    settings={**recipes['consistency'],**recipes['refinement']}
+    settings.update(lr=5e-6,microbatch=16,save_every=250,sample_every=250,log_every=25,
+                    teacher=str(args.workdir/'baseline/teacher.ckpt'),
+                    init_student=str(args.workdir/'baseline/few_nfe.ckpt'),
+                    data_root=str(ROOT/'data/pokemon-generation-one-22k'),
+                    split_dir=str(ROOT/'data/pokemon-generation-one-22k'))
+    out=args.workdir/'few5e6'
+    state=out/'training-state.pt'
+    complete=state.exists() and torch.load(state,map_location='cpu',weights_only=True)['step']>=2000
+    if not complete:
+        restore=['--resume',state] if state.exists() else []
+        execute([sys.executable,'-u','-m','distillation.train',*options(settings),
+                 '--outdir',out,'--steps','2000',*restore],args.workdir/'few5e6.log')
+    for name,checkpoint in [('baseline',args.workdir/'baseline/few_nfe.ckpt'),
+            *[(str(step),out/'snapshots'/f'student-{step:06d}.ckpt') for step in range(250,2001,250)]]:
+        payload=torch.load(checkpoint,map_location='cpu',weights_only=True)
+        grid=payload['state_dict']['backbone.four_sigmas']
+        torch.testing.assert_close(grid,torch.tensor([80.,5.,.5,.02]))
+        destination=args.workdir/'few-evaluations'/name
+        execute(evaluation_command(args,checkpoint,'few_nfe',destination),args.workdir/'few-evaluation.log')
+    rows=[]
+    for path in (args.workdir/'few-evaluations').glob('*/fid.json'):
+        rows.append({'experiment':path.parent.name,**json.loads(path.read_text())})
+    write(args.workdir/'few-comparison.json',sorted(rows,key=lambda row:row['training_reference_fid']))
+    write(args.workdir/'few-complete.json',{'phase':'complete'})
+
+
 def evaluate(args):
     import tempfile
     import torch
@@ -175,7 +206,7 @@ def evaluate(args):
         model=Adapter()
     else:
         from model import Model
-        model=Model.load_checkpoint(args.checkpoint,evaluate_mode='one_nfe',device='cuda')
+        model=Model.load_checkpoint(args.checkpoint,evaluate_mode='few_nfe' if args.kind=='few_nfe' else 'one_nfe',device='cuda')
     reference=args.workdir/'reference'
     # Each evaluator has its own reference directory to avoid partial shared exports.
     reference=destination/'reference'
@@ -205,7 +236,8 @@ def evaluate(args):
     reference.rmdir()
     row={'training_reference_fid':score,'reference_count':len(paths),'generated_count':len(categories),
          'seed':10789,'batch_size':8,'checkpoint':str(args.checkpoint),'checkpoint_sha256':checkpoint_hash,
-         'kind':args.kind,'guidance':args.guidance if args.kind=='teacher' else 1.,
+         'kind':args.kind,'nfe':158 if args.kind=='teacher' else (4 if args.kind=='few_nfe' else 1),
+         'guidance':args.guidance if args.kind=='teacher' else 1.,
          'monitor_sha256':digest(args.workdir/'monitor.txt'),'official_validation_used':False,
          'note':'Training-only reference; parent models may have seen these images. Not official FID.'}
     write(result,row)
@@ -214,12 +246,12 @@ def evaluate(args):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--task',choices=['prepare','teacher','student','evaluate'],required=True)
+    parser.add_argument('--task',choices=['prepare','teacher','student','few','evaluate'],required=True)
     parser.add_argument('--baseline-root',type=Path,required=True)
     parser.add_argument('--teacher',type=Path,required=True)
     parser.add_argument('--workdir',type=Path,required=True)
     parser.add_argument('--checkpoint',type=Path)
-    parser.add_argument('--kind',choices=['teacher','student'])
+    parser.add_argument('--kind',choices=['teacher','student','few_nfe'])
     parser.add_argument('--evaluation-output',type=Path)
     parser.add_argument('--guidance',type=float,default=2.)
     args=parser.parse_args()
@@ -229,7 +261,7 @@ def main():
     else:
         (args.workdir/f'{args.task}-failed.json').unlink(missing_ok=True)
         try:
-            {'teacher':teacher_run,'student':student_run}[args.task](args)
+            {'teacher':teacher_run,'student':student_run,'few':few_run}[args.task](args)
         except Exception as error:
             write(args.workdir/f'{args.task}-failed.json',{'error':str(error)})
             raise

@@ -103,7 +103,7 @@
     "README.md": "ad6db88a77e30cbe6c4970b27ae9df349ebafa7f0255b37c6569d1546ec51cba",
     "REFERENCE_RESULTS.json": "60b78de2758f76a444c77cec1754d048da518767a6017658ac38b21af33ac202",
     "SUBMISSION_MANIFEST.json": "60c1634be656f77a63e8df53335ee2ba637a3e0cbf630b92c13e05a54a8d8ec1",
-    "TRAINING.md": "9ae5e222e0d865ad1b782bac4a0a5be91b6b085053ed6a93005f00fbc0e3a45c",
+    "TRAINING.md": "cfcc47d0ffa6a73d768960273b9dfc0c2ed1f50e15571144fd6b74d2f56a84bc",
     "_common.py": "d062a1ff1af70a39841ced712b27b326080e64c3faa91aaff3af04e8610bd817",
     "check_submission.py": "99b67f628109996bde58075d38500fcd84574dd4e0f3b128019eef5f9b588354",
     "checkpoints/few_nfe.ckpt": "0a96dc7f893a08c2dfd2832152644f07eacd56fc1e09407adf9d433f4d7e8692",
@@ -145,7 +145,7 @@
     "validation/training-smoke.log": "a87e20083a31fa164b37316dd5bff27d8a78be08edc8d129db6aafbddd8a4e72",
     "verify.py": "5559c7117ada7862392bf8ab8b784eba91da27f4e20ac243a573c276143c3342",
     "training/retain_checkpoints.py": "aeac7670b1635101042acf2b8f5fd150292f7f0f6c4756e61bca433c3e664ccf",
-    "experiments/refinement.py": "a3ad7acb0f6a9b342cd75173e3fc520d4e2ae2bb7823707c7b2bbe098f627972",
+    "experiments/refinement.py": "8185b1272173b7210b32fa989860efb2d259f39e5bddd93685d117da7818ba3e",
     "tests/test_refinement.py": "7540c2259fe5b7be63c23779236389c386f0f5877a42e1d781103ffbc3dbfdb5"
   },
   "one_nfe_recipe_source_revision": "89827cef",
