@@ -103,7 +103,7 @@
     "README.md": "ad6db88a77e30cbe6c4970b27ae9df349ebafa7f0255b37c6569d1546ec51cba",
     "REFERENCE_RESULTS.json": "60b78de2758f76a444c77cec1754d048da518767a6017658ac38b21af33ac202",
     "SUBMISSION_MANIFEST.json": "60c1634be656f77a63e8df53335ee2ba637a3e0cbf630b92c13e05a54a8d8ec1",
-    "TRAINING.md": "4a9edeb42db649f0be534e2f11940719e9a8585b1cd3e40b7568a557a66bd0c4",
+    "TRAINING.md": "63d0c8a18b4282613d68d6cd831acde2bd65a3d01cf9c05bd8ed42aec9e0c5be",
     "_common.py": "d062a1ff1af70a39841ced712b27b326080e64c3faa91aaff3af04e8610bd817",
     "check_submission.py": "99b67f628109996bde58075d38500fcd84574dd4e0f3b128019eef5f9b588354",
     "checkpoints/few_nfe.ckpt": "0a96dc7f893a08c2dfd2832152644f07eacd56fc1e09407adf9d433f4d7e8692",
@@ -145,7 +145,7 @@
     "validation/training-smoke.log": "a87e20083a31fa164b37316dd5bff27d8a78be08edc8d129db6aafbddd8a4e72",
     "verify.py": "5559c7117ada7862392bf8ab8b784eba91da27f4e20ac243a573c276143c3342",
     "training/retain_checkpoints.py": "aeac7670b1635101042acf2b8f5fd150292f7f0f6c4756e61bca433c3e664ccf",
-    "experiments/refinement.py": "d8e809a7e0c4b10c095de9ece6f718d6c0e527bc6e15e34bfd40c8409388db48",
+    "experiments/refinement.py": "2332971df0a9e369cb78cad0b351da2e2adf5c0be156807f3a55058f5675280b",
     "tests/test_refinement.py": "8d69363f74377a12955421c13491ed4ab29e600fb7d77de2d847a11038fb4d62",
     "training/holdout.py": "1b6066e7ae95e4726c1f6639912092148c57282ae0951ecf3066b957759aa8cd",
     "experiments/train_holdout_teacher.py": "36b5a2827ef65ac1a00dac02d2a4f0b78e89f80275a99fd0a4ae5d4a49eb7cec",
@@ -153,7 +153,9 @@
     "data/holdout-v1/val_split.txt": "cdcf6afc2af3bde412a6b30da6572e306454ceca9d4cd4b7f6af8d7b0d97001e",
     "data/holdout-v1/partition.json": "65fcc88e918c078986c18d4384a3f4427d6f0b64dc24c12c9707ddd807b60e80",
     "data/holdout-v1/category_to_id.json": "7c27ec2a15fa4f70b5729319d596d3a80bc528cdeeb02f36b88877a6545b77e8",
-    "data/holdout-v1/train_split.txt": "0f93a15a96a411077e761a25d21fbcf005a424e3ff1128c8ac40803ea54aa6e4"
+    "data/holdout-v1/train_split.txt": "0f93a15a96a411077e761a25d21fbcf005a424e3ff1128c8ac40803ea54aa6e4",
+    "experiments/overnight_one.py": "c4eaa2fbb5866bbf89112712adf2c5a0e912fcd0324ae1ce232400efc898af69",
+    "tests/test_overnight.py": "24b73f94755f8a9ff4aa8ea15fd6dca5f32f0172d4145fe7ff9352636f3d153b"
   },
   "one_nfe_recipe_source_revision": "89827cef",
   "submission_adaptation": "Root README and TA dependency list supplied for midterm packaging; core model/training code unchanged.",

@@ -175,10 +175,8 @@ def few_run(args):
     write(args.workdir/'few-complete.json',{'phase':'complete'})
 
 
-def one_run(args):
-    """Reuse the completed fixed5 control; change one objective/data factor per arm."""
-    from _common import options
-    import torch
+def one_settings(args):
+    """The common recipe shared with the completed fixed5 control."""
     parent=json.loads((args.baseline_root/'checkpoints/dmd-refined-gan/config.json').read_text())['arguments']
     keys=('lr','fake_lr','guidance','reg_weight','score_warmup','gan_weight','gan_start','gan_reg_weight','amp','seed','batch_size')
     common={k:parent[k] for k in keys}
@@ -189,6 +187,14 @@ def one_run(args):
                   generator_freeze_until=5100,diagnostic_every=250,diagnostic_count=32,
                   gan_exclude_manifest=str(args.workdir/'monitor.txt'),
                   data_root=str(ROOT/'data/pokemon-generation-one-22k'),split_dir=str(ROOT/'data/pokemon-generation-one-22k'))
+    return common
+
+
+def one_run(args):
+    """Reuse fixed5; change one objective/data factor per arm."""
+    from _common import options
+    import torch
+    common=one_settings(args)
     output=args.workdir/'one-followups'
     output.mkdir(exist_ok=True)
     write(output/'plan.json',{'parent_sha256':digest(args.workdir/'baseline/dmd-parent.pt'),

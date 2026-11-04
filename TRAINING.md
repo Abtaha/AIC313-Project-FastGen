@@ -321,3 +321,25 @@ initialization weights without matching clean-partition provenance. The
 consistency and GAN loaders read only the fitting manifest. Synthetic teacher
 pairs inherit the frozen clean teacher's provenance through its checkpoint hash.
 Legacy experiments and submitted checkpoints remain separate.
+
+## Overnight one-pass queue
+
+`python -m experiments.overnight_one --baseline-root PREVIOUS_REPO --teacher ORIGINAL_TEACHER`
+waits for the current `cache16` pilot, preserving its best evaluated full state
+while the live checkpoint is atomically replaced. If its endpoint is its best
+and improves the starting monitoring FID by at least one point, it gets at most
+500 extra generator updates, checked every 250 and stopped on deterioration.
+
+Next, the queue generates a 64-pairs/class teacher cache (9,664 fitting pairs
+plus 151 synthetic monitoring pairs). It forks the same original 5k full state
+and uses the same recipe/control as the cache16 experiment: 100 score-only
+warmup loops, up to 1,000 generator updates, fixed regression .025, five fake
+updates, and unchanged teacher/GAN weights. FID is checked at 5250, 5500, 5750,
+6000 and 6100; from 5500 onward, an arm stops if it exceeds its matched control
+by three points. Only a winning cache64 endpoint receives at most 500 further
+updates. Best inference checkpoints and matching full optimizer/fake-score/GAN
+states are preserved. Outputs are in `results/nov03/overnight-one/`.
+
+This queue uses the legacy experiment's training-only reference, which its
+parent weights may have seen. It is independent of the fresh, untouched
+holdout-v1 teacher, and does not load the official validation reference.
