@@ -47,6 +47,8 @@ def check_memory(device, limit_gb):
 
 
 def train(args):
+    if not 0 <= args.trajectory_probability <= 1:
+        raise ValueError("Trajectory probability must be in [0, 1]")
     if min(args.steps, args.batch_size, args.microbatch, args.save_every, args.log_every,
            args.sample_every, args.num_intervals) < 1 or args.batch_size % args.microbatch:
         raise ValueError("Positive intervals/batch sizes required; microbatch must divide batch-size")
@@ -118,6 +120,10 @@ def train(args):
         identity["data_partition"] = data_partition
     if initialization is not None:
         identity["initialization"] = initialization
+    if args.trajectory_probability:
+        identity["recipe"].update(trajectory_probability=args.trajectory_probability,
+                                  trajectory_source=args.trajectory_source,
+                                  trajectory_objective="local-heun-consistency-v1")
     optimizer = torch.optim.Adam(student.parameters(), lr=args.lr, betas=(0.9, 0.999))
     start, elapsed_before = 0, 0.0
     if args.resume:
@@ -153,7 +159,7 @@ def train(args):
         rate = args.lr * min(step / max(args.warmup_steps, 1), 1)
         for group in optimizer.param_groups:
             group["lr"] = rate
-        total = 0.0
+        total, trajectory_total, trajectory_batches = 0.0, 0.0, 0
         for _ in range(accumulation):
             try:
                 images, labels = next(iterator)
@@ -165,12 +171,18 @@ def train(args):
                 flip = torch.rand((len(images), 1, 1, 1), device=device) < 0.5
                 images = torch.where(flip, images.flip(-1), images)
             with torch.autocast(device_type=device.type, dtype=torch.bfloat16, enabled=args.amp == "bf16"):
+                trajectory = bool(args.trajectory_probability and
+                                  torch.rand((), device=device) < args.trajectory_probability)
                 loss = consistency_loss(student, target, teacher, images, labels,
-                    grid=grid, guidance=args.guidance, loss_type=args.loss)
+                    grid=grid, guidance=args.guidance, loss_type=args.loss,
+                    trajectory=trajectory, trajectory_source=args.trajectory_source)
             if not torch.isfinite(loss):
                 raise FloatingPointError(f"Nonfinite loss at step {step}")
             (loss / accumulation).backward()
             total += float(loss.detach()) / accumulation
+            if trajectory:
+                trajectory_total += float(loss.detach())
+                trajectory_batches += 1
         norm = torch.nn.utils.clip_grad_norm_(student.parameters(), args.grad_clip, error_if_nonfinite=True)
         optimizer.step()
         update_ema(target, student, args.ema_decay)
@@ -180,6 +192,9 @@ def train(args):
                    "lr": rate, "grad_norm": float(norm), "step_seconds": time.monotonic() - step_clock,
                    "elapsed_seconds": elapsed_before + time.monotonic() - clock,
                    "peak_allocated_gb": torch.cuda.max_memory_allocated(device) / 1e9 if device.type == "cuda" else 0}
+            if args.trajectory_probability:
+                row.update(trajectory_batches=trajectory_batches,
+                    trajectory_loss=trajectory_total/trajectory_batches if trajectory_batches else None)
             print(json.dumps(row), flush=True)
             with (output / "stats.jsonl").open("a") as stream:
                 stream.write(json.dumps(row) + "\n")
@@ -225,6 +240,8 @@ def parser():
     p.add_argument("--num-workers", type=int, default=4)
     p.add_argument("--guidance", type=float, default=2.0)
     p.add_argument("--num-intervals", type=int, default=40)
+    p.add_argument("--trajectory-probability", type=float, default=0., help="Fraction of microbatches using inference-grid consistency inputs")
+    p.add_argument("--trajectory-source", choices=("student", "real"), default="student")
     p.add_argument("--lr", type=float, default=1e-4)
     p.add_argument("--warmup-steps", type=int, default=500)
     p.add_argument("--ema-decay", type=float, default=0.95)

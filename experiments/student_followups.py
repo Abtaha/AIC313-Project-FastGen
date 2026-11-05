@@ -30,7 +30,7 @@ def few_recipe(args, change):
             'split_dir':str(ROOT/'data/pokemon-generation-one-22k'), **change}
 
 
-def few_blocks(args, root, name, change):
+def few_blocks(args, root, name, change, control_directory=None, control_name=None):
     settings=few_recipe(args,change)
     out=root/name
     history=[]
@@ -54,7 +54,9 @@ def few_blocks(args, root, name, change):
         pin_best(state,row,out)
         history.append(row)
         write(out/'evaluation-history.json',history)
-        control=json.loads((args.workdir/f'few-evaluations/{step}/fid.json').read_text())['training_reference_fid']
+        control_path=(control_directory/f'{control_name}-{step}/fid.json' if control_directory else
+                      args.workdir/f'few-evaluations/{step}/fid.json')
+        control=json.loads(control_path.read_text())['training_reference_fid']
         if step>=500 and row['fid']>control+1.5:
             write(out/'completion.json',{'phase':'stopped_for_quality',**row})
             return
@@ -106,16 +108,59 @@ def main(args):
     write(root/'status.json',{'phase':'complete'})
 
 
+def trajectory_run(args):
+    root=args.workdir/'trajectory-four'
+    root.mkdir(parents=True,exist_ok=True)
+    write(root/'plan.json',{
+        'source_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
+        'parent_sha256':digest(args.workdir/'baseline/few_nfe.ckpt'),
+        'teacher_sha256':digest(args.workdir/'baseline/teacher.ckpt'),
+        'reference':'DMD2 section 4.5, https://arxiv.org/abs/2405.14867',
+        'adaptation':'Stopped-gradient student sampler prefix + local guided-Heun consistency target; not full DMD2.',
+        'arms':['schedule-real','schedule-student'],
+        'trajectory_microbatch_probability':.5,'ordinary_consistency_probability':.5,
+        'num_intervals':80,'lr':5e-6,'ema_decay':.95,'steps_max_per_arm':1000,
+        'sampling_sigmas':[80,5,.5,.02],'inference_nfe':4,
+        'comparisons':'schedule-real vs existing grid80; schedule-student vs matched schedule-real',
+        'stop':'From 500 updates stop if FID exceeds matched control by 1.5.',
+        'selection':'Legacy training-only monitor; parents may have seen reference images.',
+        'official_validation_used':False})
+    if args.dry_run:return
+    upstream=args.workdir/'student-followups/status.json'
+    while True:
+        status=json.loads(upstream.read_text())
+        if status['phase']=='complete':break
+        if status['phase']=='failed':raise RuntimeError(f'Prior student queue failed: {status}')
+        write(root/'status.json',{'phase':'waiting_for_student_queue','upstream':status})
+        time.sleep(30)
+    for source in ('real','student'):
+        name=f'schedule-{source}'
+        if (root/name/'completion.json').exists():continue
+        controls=(args.workdir/'student-followups/evaluations') if source=='real' else root/'evaluations'
+        control_name='few-grid80' if source=='real' else 'schedule-real'
+        # If the real arm stopped early, compare later steps against grid80 instead.
+        if source=='student' and json.loads((root/'schedule-real/completion.json').read_text())['phase']!='complete':
+            controls=args.workdir/'student-followups/evaluations';control_name='few-grid80'
+        few_blocks(args,root,name,{'num_intervals':80,'trajectory_probability':.5,
+                   'trajectory_source':source},controls,control_name)
+    rows=[{'experiment':p.parent.name,**json.loads(p.read_text())}
+          for p in (root/'evaluations').glob('*/fid.json')]
+    write(root/'comparison.json',sorted(rows,key=lambda row:row['training_reference_fid']))
+    write(root/'status.json',{'phase':'complete'})
+
+
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--baseline-root',type=Path,required=True)
     parser.add_argument('--teacher',type=Path,required=True)
     parser.add_argument('--workdir',type=Path,default=ROOT/'results/nov03')
     parser.add_argument('--dry-run',action='store_true')
+    parser.add_argument('--task',choices=('controls','trajectory'),default='controls')
     args=parser.parse_args()
     args.workdir=args.workdir.resolve()
     try:
-        main(args)
+        (trajectory_run if args.task=='trajectory' else main)(args)
     except Exception as error:
-        write(args.workdir/'student-followups/status.json',{'phase':'failed','error':str(error)})
+        output='trajectory-four' if args.task=='trajectory' else 'student-followups'
+        write(args.workdir/output/'status.json',{'phase':'failed','error':str(error)})
         raise

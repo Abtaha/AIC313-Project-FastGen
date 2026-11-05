@@ -345,6 +345,37 @@ network calls. These are hypotheses about target discretization and checkpoint
 smoothing, not established improvements. Selection uses the legacy training-only
 monitor, not official validation, and does not make a clean-holdout claim.
 
+## Four-pass trajectory pilot
+
+`python -m experiments.student_followups --task trajectory --baseline-root PREVIOUS_REPO --teacher ORIGINAL_TEACHER`
+queues two matched arms after the existing student queue. Both start from the
+same submitted four-pass checkpoint with fresh Adam, LR 5e-6, EMA .95, 80 training
+intervals, the same seed and at most 1,000 updates. Outputs and best full states
+are in `results/nov03/trajectory-four/`.
+
+Half the microbatches retain ordinary consistency training. On the other half,
+uniformly choose one of the four inference sigmas [80, 5, .5, .02]. The
+`schedule-real` arm corrupts a training image at that sigma. The
+`schedule-student` arm runs the online student's preceding inference steps in
+FP32 without gradients, including the actual re-noising variance and no
+intermediate clipping, to obtain the selected step's input. Only that step is
+differentiated. The target is one guided FP32 Heun step to the nearest strictly
+lower point on the 80-interval grid, followed by the stopped EMA consistency
+network. Stage selection is uniform per microbatch. Prefix weights use eval
+mode, restored afterward; these students have zero dropout.
+
+This adapts backward simulation from [DMD2 section 4.5](https://arxiv.org/abs/2405.14867)
+to our local consistency loss. It retains a regression-style target and does
+not implement full multi-step DMD2's distribution matching/GAN objective. Whether
+the frozen teacher gives useful targets on these generated states is an
+experimental question. The schedule-real control isolates the input-distribution
+change from the changed sigma sampling. Evaluate at 250/500/750/1000; from 500,
+stop if FID exceeds the matched control by 1.5. If schedule-real stops early,
+the remaining student arm uses the completed grid80 control as a safety bound.
+All selection uses the legacy training-only monitor, not official validation.
+Normal training defaults, inference architecture and four-call sampler are
+unchanged; nonzero trajectory settings are part of strict resume identity.
+
 ## Overnight one-pass queue
 
 `python -m experiments.overnight_one --baseline-root PREVIOUS_REPO --teacher ORIGINAL_TEACHER`

@@ -24,10 +24,14 @@ def heun_target(teacher, x, high, low, category, guidance):
 
 
 def consistency_loss(student, target, teacher, images, category, *, grid, guidance,
-                     loss_type="pseudo-huber"):
-    index = torch.randint(len(grid) - 1, (len(images),), device=images.device)
-    low, high = grid[index], grid[index + 1]
-    noisy = images.float() + high[:, None, None, None] * torch.randn_like(images)
+                     loss_type="pseudo-huber", trajectory=False, trajectory_source="student"):
+    if trajectory:
+        noisy, low, high = trajectory_input(student, images, category, grid,
+                                           source=trajectory_source)
+    else:
+        index = torch.randint(len(grid) - 1, (len(images),), device=images.device)
+        low, high = grid[index], grid[index + 1]
+        noisy = images.float() + high[:, None, None, None] * torch.randn_like(images)
     with torch.no_grad():
         # Teacher integration stays FP32 even when the student uses AMP.
         with torch.autocast(device_type=images.device.type, enabled=False):
@@ -42,3 +46,39 @@ def consistency_loss(student, target, teacher, images, category, *, grid, guidan
     else:
         raise ValueError("Unknown consistency loss")
     return (distance / (high - low)).mean()
+
+
+@torch.no_grad()
+def trajectory_input(student, images, category, grid, *, source="student", stage=None):
+    """Stopped-gradient sampler prefix, including the exact inference re-noising.
+
+    Adaptation of backward simulation (DMD2 sec. 4.5) to our local consistency
+    objective, not the paper's full multi-step DMD/GAN objective. No intermediate
+    clipping: ConsistencyStudent.sample clips only after its final call.
+    """
+    if source not in ("student", "real"):
+        raise ValueError("Trajectory source must be student or real")
+    sigmas = student.sampling_sigmas(4, device=images.device)
+    stage = int(torch.randint(4, (), device=images.device)) if stage is None else stage
+    if stage not in range(4):
+        raise ValueError("Trajectory stage must be in 0..3")
+    high = sigmas[stage]
+    lower = grid[grid < high]
+    if not len(lower):
+        raise ValueError("Inference sigma requires a strictly lower consistency target")
+    low = lower[-1]
+    if source == "real":
+        x = images.float() + high * torch.randn_like(images)
+    else:
+        x = torch.randn_like(images) * sigmas[0]
+        mode = student.training
+        try:
+            student.eval()
+            with torch.autocast(device_type=images.device.type, enabled=False):
+                for index in range(stage):
+                    x = student(x, sigmas[index], category)
+                    scale = (sigmas[index+1].square()-student.config.sigma_min**2).clamp_min(0).sqrt()
+                    x = x + scale * torch.randn_like(x)
+        finally:
+            student.train(mode)
+    return x.detach(), low.expand(len(images)), high.expand(len(images))
