@@ -376,6 +376,18 @@ All selection uses the legacy training-only monitor, not official validation.
 Normal training defaults, inference architecture and four-call sampler are
 unchanged; nonzero trajectory settings are part of strict resume identity.
 
+## Continue the grid80 four-pass candidate
+
+`python -m experiments.student_followups --task extend-four --baseline-root PREVIOUS_REPO --teacher ORIGINAL_TEACHER`
+resumes the protected step-1000 grid80 full state, including Adam moments and
+EMA, into `results/nov03/four-extension/grid80/`. It preserves the original
+25.11 official-reference candidate and trains at the same LR 5e-6, intervals
+80 and EMA .95 up to steps 1250/1500/1750/2000. Each block is monitored on the
+training-only reference; stop if FID exceeds the parent's internal FID by .75.
+The parent remains eligible as the best checkpoint. The continuation waits for
+the current student queue, then takes priority over the trajectory pilots so
+only one student training job shares the GPU with the teacher.
+
 ## Overnight one-pass queue
 
 `python -m experiments.overnight_one --baseline-root PREVIOUS_REPO --teacher ORIGINAL_TEACHER`

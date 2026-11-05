@@ -8,7 +8,7 @@ from unittest.mock import patch
 import torch
 
 from experiments.overnight_one import pin_best, wait_for_cache16
-from experiments.student_followups import few_recipe, one_recipe
+from experiments.student_followups import few_recipe, one_recipe, extend_four
 
 
 def main():
@@ -40,7 +40,7 @@ def main():
         overnight=work/'overnight-one';overnight.mkdir()
         wait_for_cache16(SimpleNamespace(workdir=work),overnight)
         assert json.loads((overnight/'cache16-best/best-state.json').read_text())['step']==6100
-        args=SimpleNamespace(workdir=work)
+        args=SimpleNamespace(workdir=work,dry_run=False)
         control=few_recipe(args,{})
         for change in ({'num_intervals':80},{'ema_decay':.995}):
             arm=few_recipe(args,change)
@@ -49,6 +49,20 @@ def main():
             low,high=one_recipe(args,.05),one_recipe(args,.1)
             assert {key for key in low if low[key]!=high[key]}=={'gan_reg_weight'}
             assert low['fork_refresh_cache'] and low['lr']==5e-6
+        parent=work/'student-followups/few-grid80';parent.mkdir(parents=True)
+        (parent.parent/'status.json').write_text(json.dumps({'phase':'complete'}))
+        original={'step':1000,'optimizer':{'momentum':torch.tensor([7.])}}
+        torch.save(original,parent/'best-training-state.pt')
+        (parent/'best-state.json').write_text(json.dumps({'step':1000,'fid':30.5,
+            'checkpoint':'protected.ckpt','checkpoint_sha256':'original'}))
+        with patch('experiments.student_followups.few_blocks') as run:
+            extend_four(args)
+        run.assert_called_once()
+        assert run.call_args.kwargs['targets']==(1250,1500,1750,2000)
+        assert run.call_args.kwargs['fixed_limit']==31.25
+        resumed=torch.load(work/'four-extension/grid80/training-state.pt',weights_only=True)
+        assert resumed['step']==1000 and resumed['optimizer']['momentum'].item()==7.
+        assert json.loads((work/'four-extension/grid80/best-state.json').read_text())['step']==1000
     print('PASS: atomic full-state retention, step/score matching, best-only replacement, and upstream completion gate.')
 
 

@@ -1,6 +1,7 @@
 """Controlled one/four-pass pilots after the larger teacher-cache experiments."""
 import argparse
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -30,11 +31,12 @@ def few_recipe(args, change):
             'split_dir':str(ROOT/'data/pokemon-generation-one-22k'), **change}
 
 
-def few_blocks(args, root, name, change, control_directory=None, control_name=None):
+def few_blocks(args, root, name, change, control_directory=None, control_name=None,
+               targets=(250,500,750,1000), fixed_limit=None):
     settings=few_recipe(args,change)
     out=root/name
     history=[]
-    for step in (250,500,750,1000):
+    for step in targets:
         state=out/'training-state.pt'
         saved=torch.load(state,map_location='cpu',weights_only=True)['step'] if state.exists() else 0
         if saved<step:
@@ -54,10 +56,13 @@ def few_blocks(args, root, name, change, control_directory=None, control_name=No
         pin_best(state,row,out)
         history.append(row)
         write(out/'evaluation-history.json',history)
-        control_path=(control_directory/f'{control_name}-{step}/fid.json' if control_directory else
-                      args.workdir/f'few-evaluations/{step}/fid.json')
-        control=json.loads(control_path.read_text())['training_reference_fid']
-        if step>=500 and row['fid']>control+1.5:
+        if fixed_limit is None:
+            control_path=(control_directory/f'{control_name}-{step}/fid.json' if control_directory else
+                          args.workdir/f'few-evaluations/{step}/fid.json')
+            limit=json.loads(control_path.read_text())['training_reference_fid']+1.5
+        else:
+            limit=fixed_limit
+        if step>=500 and row['fid']>limit:
             write(out/'completion.json',{'phase':'stopped_for_quality',**row})
             return
     write(out/'completion.json',{'phase':'complete',**history[-1]})
@@ -133,6 +138,14 @@ def trajectory_run(args):
         if status['phase']=='failed':raise RuntimeError(f'Prior student queue failed: {status}')
         write(root/'status.json',{'phase':'waiting_for_student_queue','upstream':status})
         time.sleep(30)
+    # A requested continuation takes the next student GPU slot, ahead of this pilot.
+    extension=args.workdir/'four-extension/status.json'
+    while extension.exists():
+        status=json.loads(extension.read_text())
+        if status['phase']=='complete':break
+        if status['phase']=='failed':raise RuntimeError(f'Four-pass continuation failed: {status}')
+        write(root/'status.json',{'phase':'waiting_for_four_extension','upstream':status})
+        time.sleep(30)
     for source in ('real','student'):
         name=f'schedule-{source}'
         if (root/name/'completion.json').exists():continue
@@ -149,18 +162,50 @@ def trajectory_run(args):
     write(root/'status.json',{'phase':'complete'})
 
 
+def extend_four(args):
+    root=args.workdir/'four-extension'
+    root.mkdir(parents=True,exist_ok=True)
+    parent=args.workdir/'student-followups/few-grid80'
+    best=json.loads((parent/'best-state.json').read_text())
+    source=parent/'best-training-state.pt'
+    if best['step']!=1000:
+        raise ValueError('Expected the protected grid80 step-1000 full state')
+    write(root/'plan.json',{'source_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
+        'parent':best,'full_state_sha256':digest(source),'additional_updates':1000,
+        'lr':5e-6,'num_intervals':80,'ema_decay':.95,'optimizer':'resume unchanged',
+        'stop_limit_internal_fid':best['fid']+.75,'official_validation_used_for_selection':False})
+    if args.dry_run:return
+    write(root/'status.json',{'phase':'waiting_for_student_queue'})
+    while True:
+        status=json.loads((args.workdir/'student-followups/status.json').read_text())
+        if status['phase']=='complete':break
+        if status['phase']=='failed':raise RuntimeError(f'Prior student queue failed: {status}')
+        time.sleep(30)
+    out=root/'grid80'
+    out.mkdir(exist_ok=True)
+    state=out/'training-state.pt'
+    if not state.exists():
+        os.link(source,state)
+    if not (out/'best-state.json').exists():
+        pin_best(source,best,out)
+    if not (out/'completion.json').exists():
+        few_blocks(args,root,'grid80',{'num_intervals':80},
+                   targets=(1250,1500,1750,2000),fixed_limit=best['fid']+.75)
+    write(root/'status.json',{'phase':'complete'})
+
+
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--baseline-root',type=Path,required=True)
     parser.add_argument('--teacher',type=Path,required=True)
     parser.add_argument('--workdir',type=Path,default=ROOT/'results/nov03')
     parser.add_argument('--dry-run',action='store_true')
-    parser.add_argument('--task',choices=('controls','trajectory'),default='controls')
+    parser.add_argument('--task',choices=('controls','trajectory','extend-four'),default='controls')
     args=parser.parse_args()
     args.workdir=args.workdir.resolve()
     try:
-        (trajectory_run if args.task=='trajectory' else main)(args)
+        {'trajectory':trajectory_run,'controls':main,'extend-four':extend_four}[args.task](args)
     except Exception as error:
-        output='trajectory-four' if args.task=='trajectory' else 'student-followups'
+        output={'trajectory':'trajectory-four','controls':'student-followups','extend-four':'four-extension'}[args.task]
         write(args.workdir/output/'status.json',{'phase':'failed','error':str(error)})
         raise
