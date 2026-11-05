@@ -322,6 +322,29 @@ consistency and GAN loaders read only the fitting manifest. Synthetic teacher
 pairs inherit the frozen clean teacher's provenance through its checkpoint hash.
 Legacy experiments and submitted checkpoints remain separate.
 
+## Controlled student follow-ups
+
+`python -m experiments.student_followups --baseline-root PREVIOUS_REPO --teacher ORIGINAL_TEACHER`
+waits for the overnight queue, then alternates four-pass and one-pass pilots
+alongside the independent clean-holdout teacher. Outputs, source hashes, recipe,
+status and best full training states are in `results/nov03/student-followups/`.
+
+The one-pass arms fork the original 5k full state, reuse the 16-pairs/class cache
+and fixed5 recipe, and change only the active GAN-phase regression coefficient
+from .025 to .05 or .10. Each gets the same 100 score-only warmup loops and at
+most 650 generator updates, evaluated at 5250/5500/5750. From 5500, an arm stops
+if its FID exceeds the matched cache16 control by more than two points. Explicit
+DMD forks may change this coefficient; normal resumes must match exactly.
+
+The four-pass arms start from the same tuned submission student and fresh Adam
+as the completed `few5e6` control. At LR 5e-6, one changes training intervals
+40 to 80; the other changes EMA decay .95 to .995. Each trains at most 1,000
+updates with checks every 250; from 500, stop if FID exceeds the matched control
+by 1.5 points. The inference schedule remains [80, 5, .5, .02], exactly four
+network calls. These are hypotheses about target discretization and checkpoint
+smoothing, not established improvements. Selection uses the legacy training-only
+monitor, not official validation, and does not make a clean-holdout claim.
+
 ## Overnight one-pass queue
 
 `python -m experiments.overnight_one --baseline-root PREVIOUS_REPO --teacher ORIGINAL_TEACHER`

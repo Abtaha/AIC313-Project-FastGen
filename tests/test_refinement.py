@@ -36,6 +36,13 @@ def main():
     changed['gan_excluded_manifest_sha256']='monitor'
     assert compatible_identity(original,changed,fork=True)
     assert not compatible_identity(original,changed)
+    anchor={'recipe':{'gan_reg_weight':.025,'gan_weight':.003,'lr':5e-6}}
+    stronger=copy.deepcopy(anchor)
+    stronger['recipe']['gan_reg_weight']=.05
+    assert compatible_identity(anchor,stronger,fork=True)
+    assert not compatible_identity(anchor,stronger)
+    stronger['recipe']['gan_weight']=.01
+    assert not compatible_identity(anchor,stronger,fork=True)
     cache_change=copy.deepcopy(original)
     original['cache_sha256']='old'
     cache_change['cache_sha256']='new'
@@ -94,6 +101,17 @@ def main():
             assert int(next(iter(boost_state['optimizer']['state'].values()))['step'])==1
             args.resume=str(root/'dmd/training-state.pt');args.steps=2
             train_dmd(args)
+            fork=copy.deepcopy(args)
+            fork.resume=None
+            fork.fork_from=str(root/'dmd/training-state.pt')
+            fork.outdir=str(root/'stronger-anchor')
+            fork.steps=3
+            fork.gan_reg_weight=.05
+            fork.reg_decay_start=fork.reg_decay_end=0
+            train_dmd(fork)
+            forked=torch.load(root/'stronger-anchor/training-state.pt',weights_only=True)
+            assert forked['identity']['recipe']['gan_reg_weight']==.05
+            assert int(next(iter(forked['optimizer']['state'].values()))['step'])==2
         final=torch.load(root/'dmd/training-state.pt',weights_only=True)
         assert int(next(iter(final['fake_optimizer']['state'].values()))['step'])==10
         assert int(next(iter(final['optimizer']['state'].values()))['step'])==1

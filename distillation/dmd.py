@@ -54,7 +54,7 @@ def gradient_surrogate(images, gradient):
 
 
 def compatible_identity(saved, requested, *, fork=False, refresh_cache=False):
-    """Strict resumes; explicit experiment forks may change ratio and regression schedule."""
+    """Strict resumes; explicit forks may change ratio and regression/GAN objectives."""
     defaults = dict(fake_updates=1, reg_decay_start=0, reg_decay_end=0, generator_freeze_until=0, generator_gan_weight=None)
     saved = {**saved, "recipe": {**defaults, **saved["recipe"]}}
     requested = {**requested, "recipe": {**defaults, **requested["recipe"]}}
@@ -62,6 +62,9 @@ def compatible_identity(saved, requested, *, fork=False, refresh_cache=False):
         for key in defaults:
             saved["recipe"].pop(key)
             requested["recipe"].pop(key)
+        # A fork records its new anchor strength; ordinary resumes remain exact.
+        saved["recipe"].pop("gan_reg_weight", None)
+        requested["recipe"].pop("gan_reg_weight", None)
         if refresh_cache:
             saved.pop("cache_sha256", None)
             requested.pop("cache_sha256", None)
