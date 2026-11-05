@@ -388,6 +388,34 @@ The parent remains eligible as the best checkpoint. The continuation waits for
 the current student queue, then takes priority over the trajectory pilots so
 only one student training job shares the GPU with the teacher.
 
+## Bounded overnight finish
+
+`python -m experiments.overnight_finish --baseline-root PREVIOUS_REPO --teacher ORIGINAL_TEACHER`
+waits for the existing four-pass continuation and trajectory queue. It may give
+grid80 500 more updates only if its step-2000 endpoint is its best and beats its
+step-1000 internal FID by at least .15. Then two one-pass arms fork the exact
+protected anchor05 step-5500 full state: unchanged continuation versus an
+additional .02-weight teacher-feature loss. Both keep pixel regression .05,
+five fake updates, cache16, LR 5e-6 and all remaining recipe settings. Each gets
+at most 1,000 generator updates with checks every 250; stop if internal FID
+exceeds parent+.75 initially, or parent+.25 from 500 extra updates.
+
+The experimental feature term is spatial cosine distance between the frozen
+original teacher's encoder/middle features, using identical sigma=.5 corruption
+on paired prediction and target. It is our hypothesis about structural
+supervision, not an established DMD2 component or LPIPS. It introduces no external
+pretrained network, registered parameters, inference calls or teacher updates.
+Weights default to zero and are part of strict resume identity; only an explicit
+fork may change the coefficient. Best inference exports and matching full states
+remain protected, including the starting parent if neither arm improves.
+
+After training, select candidates only on the training-only internal monitor,
+then report the selected one-pass, selected four-pass and fixed final 100k fresh
+teacher using the root official evaluator. These reports do not adapt training
+or select hyperparameters using validation. All plans, statuses, checkpoints and
+reports live under `results/nov03/overnight-finish/`. Student jobs are serialized
+beside the teacher; no unbounded continuation is enabled.
+
 ## Overnight one-pass queue
 
 `python -m experiments.overnight_one --baseline-root PREVIOUS_REPO --teacher ORIGINAL_TEACHER`

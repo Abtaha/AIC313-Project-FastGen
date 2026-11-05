@@ -17,6 +17,27 @@ def matching_loss(prediction, target):
         loss = loss + (left-right).square().mean() / 3
     return loss
 
+
+def teacher_feature_loss(teacher, prediction, target, labels):
+    """Spatial cosine anchor using only our frozen teacher, not external features.
+
+    This is an experimental alternative supervision signal, not LPIPS. Identical
+    sigma=.5 corruption is used on each pair; gradients reach prediction only.
+    """
+    from .adversarial import bottleneck_features, frozen_parameters
+    sigma=prediction.new_full((len(prediction),),.5,dtype=torch.float32)
+    noise=torch.randn_like(prediction,dtype=torch.float32)*sigma[:,None,None,None]
+    mode=teacher.training
+    try:
+        teacher.eval()
+        with frozen_parameters(teacher), torch.autocast(device_type=prediction.device.type,enabled=False):
+            with torch.no_grad():
+                expected=bottleneck_features(teacher,target.float()+noise,sigma,labels)
+            actual=bottleneck_features(teacher,prediction.float()+noise,sigma,labels)
+            return (1-torch.nn.functional.cosine_similarity(actual,expected,dim=1,eps=1e-8)).mean()
+    finally:
+        teacher.train(mode)
+
 def target_cache(args, teacher, teacher_hash, mapping, device):
     path = Path(args.cache)
     identity = {"teacher_sha256": teacher_hash, "guidance": args.guidance,

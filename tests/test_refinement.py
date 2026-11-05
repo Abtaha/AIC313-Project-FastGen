@@ -11,7 +11,7 @@ from teacher import EDMTeacher, TeacherConfig
 from distillation.model import ConsistencyStudent
 from distillation.dmd import compatible_identity, fresh_score_error, regression_weight
 from distillation.dmd import parser as dmd_parser, train as train_dmd
-from distillation.support import target_cache
+from distillation.support import target_cache, teacher_feature_loss
 from distillation.train import file_hash
 from training.teacher import parser as teacher_parser, train as train_teacher
 
@@ -22,6 +22,14 @@ def main():
     teacher=EDMTeacher(config).eval()
     student=ConsistencyStudent.from_teacher(teacher).train()
     fake=EDMTeacher(config).train()
+    feature_input=torch.randn(2,3,8,8,requires_grad=True)
+    flags=[p.requires_grad for p in teacher.parameters()]
+    feature_loss=teacher_feature_loss(teacher,feature_input,torch.randn_like(feature_input),torch.tensor([0,1]))
+    assert torch.isfinite(feature_loss)
+    feature_loss.backward()
+    assert feature_input.grad.abs().sum()>0
+    assert all(p.grad is None for p in teacher.parameters())
+    assert [p.requires_grad for p in teacher.parameters()]==flags and not teacher.training
     rng=torch.get_rng_state().clone()
     result=fresh_score_error(student,fake,count=3,microbatch=2,seed=123)
     assert set(result)=={'0.1','0.5','2.0','10.0'}
@@ -36,6 +44,10 @@ def main():
     changed['gan_excluded_manifest_sha256']='monitor'
     assert compatible_identity(original,changed,fork=True)
     assert not compatible_identity(original,changed)
+    feature_recipe=copy.deepcopy(original)
+    feature_recipe['recipe']['teacher_feature_weight']=.02
+    assert not compatible_identity(original,feature_recipe)
+    assert compatible_identity(original,feature_recipe,fork=True)
     anchor={'recipe':{'gan_reg_weight':.025,'gan_weight':.003,'lr':5e-6}}
     stronger=copy.deepcopy(anchor)
     stronger['recipe']['gan_reg_weight']=.05
@@ -112,6 +124,14 @@ def main():
             forked=torch.load(root/'stronger-anchor/training-state.pt',weights_only=True)
             assert forked['identity']['recipe']['gan_reg_weight']==.05
             assert int(next(iter(forked['optimizer']['state'].values()))['step'])==2
+            feature=copy.deepcopy(fork)
+            feature.outdir=str(root/'feature-anchor')
+            feature.fork_from=str(root/'stronger-anchor/training-state.pt')
+            feature.steps=4;feature.teacher_feature_weight=.02
+            train_dmd(feature)
+            anchored=torch.load(root/'feature-anchor/training-state.pt',weights_only=True)
+            assert anchored['step']==4 and anchored['identity']['recipe']['teacher_feature_weight']==.02
+            assert int(next(iter(anchored['optimizer']['state'].values()))['step'])==3
         final=torch.load(root/'dmd/training-state.pt',weights_only=True)
         assert int(next(iter(final['fake_optimizer']['state'].values()))['step'])==10
         assert int(next(iter(final['optimizer']['state'].values()))['step'])==1

@@ -17,7 +17,7 @@ from torch.nn import functional as F
 from teacher import EDMTeacher
 from training.holdout import partition, require_same_partition
 from .model import ConsistencyStudent
-from .support import matching_loss
+from .support import matching_loss, teacher_feature_loss
 from .train import atomic_save, check_memory, file_hash
 from .support import report_fid
 
@@ -55,7 +55,7 @@ def gradient_surrogate(images, gradient):
 
 def compatible_identity(saved, requested, *, fork=False, refresh_cache=False):
     """Strict resumes; explicit forks may change ratio and regression/GAN objectives."""
-    defaults = dict(fake_updates=1, reg_decay_start=0, reg_decay_end=0, generator_freeze_until=0, generator_gan_weight=None)
+    defaults = dict(fake_updates=1, reg_decay_start=0, reg_decay_end=0, generator_freeze_until=0, generator_gan_weight=None, teacher_feature_weight=0.)
     saved = {**saved, "recipe": {**defaults, **saved["recipe"]}}
     requested = {**requested, "recipe": {**defaults, **requested["recipe"]}}
     if fork:
@@ -111,6 +111,8 @@ def fresh_score_error(generator, fake, *, count, microbatch, seed):
 
 
 def train(args):
+    if not 0 <= args.teacher_feature_weight < float('inf'):
+        raise ValueError('Teacher feature weight must be finite and nonnegative')
     if min(args.steps, args.batch_size, args.microbatch, args.save_every, args.log_every, args.fake_updates) < 1 or args.batch_size % args.microbatch:
         raise ValueError("Positive intervals required; microbatch must divide batch-size")
     if min(args.lr, args.fake_lr) <= 0 or args.reg_weight <= 0 or args.score_warmup < 0:
@@ -172,7 +174,7 @@ def train(args):
         raise ValueError("Generator including auxiliary fake score or teacher exceeds 100M")
     identity = {"teacher_sha256": teacher_hash, "student_sha256": file_hash(args.student),
                 "cache_sha256": file_hash(args.cache), "recipe": {k: getattr(args,k) for k in (
-                    "guidance", "lr", "fake_lr", "reg_weight", "score_warmup", "batch_size", "amp", "seed", "fake_updates", "reg_decay_start", "reg_decay_end", "generator_freeze_until", "generator_gan_weight")}}
+                    "guidance", "lr", "fake_lr", "reg_weight", "score_warmup", "batch_size", "amp", "seed", "fake_updates", "reg_decay_start", "reg_decay_end", "generator_freeze_until", "generator_gan_weight", "teacher_feature_weight")}}
     if data_partition:
         identity["data_partition"] = data_partition
     if head is not None:
@@ -230,7 +232,7 @@ def train(args):
         gan_g_total, gan_d_total = 0.0, 0.0
         real_accuracy, fake_accuracy = 0.0, 0.0
         image_std, saturation = 0.0, 0.0
-        generated, dm_total, reg_total = [], 0.0, 0.0
+        generated, dm_total, reg_total, feature_total = [], 0.0, 0.0, 0.0
         for _ in range(args.batch_size//args.microbatch):
             noise = torch.randn(args.microbatch,c.channels,c.resolution,c.resolution,device=device)
             labels = torch.randint(c.num_classes,(args.microbatch,),device=device)
@@ -241,12 +243,18 @@ def train(args):
                     dm = gradient_surrogate(images.float(), grad)
                     reg = images.new_zeros(())
                     # Consume the same paired-index RNG stream after decay reaches zero.
-                    if reg_weight or args.reg_decay_end:
+                    if reg_weight or args.reg_decay_end or args.teacher_feature_weight:
                         ids = fit[torch.randint(len(fit),(args.microbatch,))]
-                    if reg_weight:
+                    if reg_weight or args.teacher_feature_weight:
                         paired = generate(generator, cache["latents"][ids].to(device), cache["labels"][ids].to(device))
-                        reg = matching_loss(paired.float(), cache["targets"][ids].to(device))
+                        paired_target=cache["targets"][ids].to(device)
+                        if reg_weight:
+                            reg = matching_loss(paired.float(), paired_target)
                     loss = dm + reg_weight*reg
+                    if args.teacher_feature_weight:
+                        feature=teacher_feature_loss(teacher,paired,paired_target,cache['labels'][ids].to(device))
+                        loss=loss+args.teacher_feature_weight*feature
+                        feature_total+=float(feature.detach())*args.microbatch/args.batch_size
                     if gan_active:
                         from .adversarial import frozen_parameters, random_flip
                         with frozen_parameters(fake, head):
@@ -298,7 +306,7 @@ def train(args):
         check_memory(device,args.memory_limit_gb)
         if step == start+1 or step % args.log_every == 0:
             row = {"step":step,"dm_surrogate":dm_total,"reg_loss":reg_total,"fake_loss":fake_total,"fake_updates":args.fake_updates,
-                   "gan_active":gan_active,"generator_gan_weight":args.gan_weight if args.generator_gan_weight is None else args.generator_gan_weight,"generator_updated":update_generator,"reg_weight":reg_weight,"gan_g":gan_g_total,"gan_d":gan_d_total,
+                   "gan_active":gan_active,"generator_gan_weight":args.gan_weight if args.generator_gan_weight is None else args.generator_gan_weight,"generator_updated":update_generator,"reg_weight":reg_weight,"teacher_feature_loss":feature_total,"teacher_feature_weight":args.teacher_feature_weight,"gan_g":gan_g_total,"gan_d":gan_d_total,
                    "gan_real_accuracy":real_accuracy,"gan_fake_accuracy":fake_accuracy,
                    "image_std":image_std,"out_of_range_fraction":saturation,
                    "grad_norm":float(norm),"elapsed_seconds":time.monotonic()-clock,
@@ -355,6 +363,7 @@ def parser():
     p.add_argument("--gan-start",type=int,default=2000,help="Enable GAN after this absolute generator-loop step")
     p.add_argument("--gan-reg-weight",type=float,default=.025,help="Regression weight once the GAN is active; 0 removes regression")
     p.add_argument("--generator-gan-weight", type=float, help="Generator-only GAN coefficient; defaults to gan-weight, critic coefficient unchanged")
+    p.add_argument("--teacher-feature-weight",type=float,default=0.,help="Experimental spatial cosine anchor using frozen original-teacher features; no external network")
     p.add_argument("--fork-refresh-cache", action="store_true", help="Allow an explicit fork to replace paired targets while retaining the same score teacher")
     p.add_argument("--reg-decay-start", type=int, default=0)
     p.add_argument("--reg-decay-end", type=int, default=0, help="Absolute loop step at which regression reaches zero; 0 disables decay")
