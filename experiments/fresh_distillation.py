@@ -38,7 +38,7 @@ def dmd_recipe(args, mode, student):
 
 def evaluate(args, checkpoint, mode, name):
     destination=args.output/'evaluations'/name
-    kind='one_nfe' if mode=='one' else 'few_nfe'
+    kind='student' if mode=='one' else 'few_nfe'
     execute(evaluation_command(args,checkpoint,kind,destination),args.output/f'{mode}-evaluation.log')
     result=json.loads((destination/'fid.json').read_text())
     return {'step':torch.load(checkpoint,map_location='cpu',weights_only=True)['step'],

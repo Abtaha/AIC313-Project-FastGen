@@ -13,7 +13,8 @@ from teacher import EDMTeacher, TeacherConfig
 from distillation.model import ConsistencyStudent
 from distillation.train import parser, train, file_hash
 from distillation.dmd import parser as dmd_parser
-from experiments.fresh_distillation import foundation_recipe, dmd_recipe
+from experiments.fresh_distillation import foundation_recipe, dmd_recipe, evaluate
+from experiments.refinement import parser as evaluation_parser
 
 
 def main():
@@ -62,6 +63,17 @@ def main():
                 '--outdir',str(root/mode)])
             assert branch.sampling_nfe==nfe and branch.fork_from is None and branch.resume is None
             assert branch.generator_freeze_until==100
+        task.workdir=task.baseline_root=root
+        def evaluate_fixture(command,log):
+            # Exercise the real evaluator CLI parser, not a duplicated choices list.
+            parsed=evaluation_parser().parse_args([str(value) for value in command[4:]])
+            parsed.evaluation_output.mkdir(parents=True)
+            (parsed.evaluation_output/'fid.json').write_text(json.dumps({
+                'training_reference_fid':30.,'checkpoint_sha256':file_hash(parsed.checkpoint)}))
+        with patch('experiments.fresh_distillation.execute',side_effect=evaluate_fixture):
+            for mode in ('one','four'):
+                row=evaluate(task,root/'foundation/student.ckpt',mode,'check-'+mode)
+                assert row['step']==1 and row['fid']==30.
     print('PASS: exact original-teacher backbone initialization; no old student/optimizer; explicit grid/resume guard; fresh independent 1/4 recipes.')
 
 

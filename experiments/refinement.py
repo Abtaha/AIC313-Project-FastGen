@@ -325,7 +325,7 @@ def evaluate(args):
     print(json.dumps(row),flush=True)
 
 
-def main():
+def parser():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--task',choices=['prepare','teacher','student','few','one','evaluate'],required=True)
     parser.add_argument('--baseline-root',type=Path,required=True)
@@ -335,7 +335,11 @@ def main():
     parser.add_argument('--kind',choices=['teacher','student','few_nfe'])
     parser.add_argument('--evaluation-output',type=Path)
     parser.add_argument('--guidance',type=float,default=2.)
-    args=parser.parse_args()
+    return parser
+
+
+def main():
+    args=parser().parse_args()
     args.workdir=args.workdir.resolve()
     if args.task=='prepare': prepare(args)
     elif args.task=='evaluate': evaluate(args)

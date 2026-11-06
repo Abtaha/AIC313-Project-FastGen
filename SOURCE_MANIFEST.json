@@ -145,7 +145,7 @@
     "validation/training-smoke.log": "a87e20083a31fa164b37316dd5bff27d8a78be08edc8d129db6aafbddd8a4e72",
     "verify.py": "5559c7117ada7862392bf8ab8b784eba91da27f4e20ac243a573c276143c3342",
     "training/retain_checkpoints.py": "aeac7670b1635101042acf2b8f5fd150292f7f0f6c4756e61bca433c3e664ccf",
-    "experiments/refinement.py": "2332971df0a9e369cb78cad0b351da2e2adf5c0be156807f3a55058f5675280b",
+    "experiments/refinement.py": "df3d7482273660088cf6e5d6743a565f3509bc1654d44aa289288a6e5d368b96",
     "tests/test_refinement.py": "ac0121ddc190d5d4571268a6f479f0600fb6942dba7e3467af394c51284e7f78",
     "training/holdout.py": "1b6066e7ae95e4726c1f6639912092148c57282ae0951ecf3066b957759aa8cd",
     "experiments/train_holdout_teacher.py": "36b5a2827ef65ac1a00dac02d2a4f0b78e89f80275a99fd0a4ae5d4a49eb7cec",
@@ -161,8 +161,8 @@
     "experiments/overnight_finish.py": "2a07d48e26418c30e42a4abc80ce6e767120b2199020fe3a009afdb4b5d6636c",
     "experiments/multistep_dmd.py": "3654286525fe621526c64b61428b251ed8773e90e56e6de7619cf009abdecd2f",
     "tests/test_multistep_dmd.py": "e57c71a5593ce2ee35971a65d049aff54ed0130638361903f759136cbe6436b9",
-    "experiments/fresh_distillation.py": "0eafe158ffc704b3f71064c2e0afbfa8d8d42608bed04cc9070be1c7dc89601c",
-    "tests/test_fresh_distillation.py": "5646b37e0b352b04c4acb5b44cdd3db55963a4599b53d81999577be6e78b38c7"
+    "experiments/fresh_distillation.py": "3d6cb5e7feb3f56bd01e345e5b48c4a8b8781ae370f19968f86fb325b9eb1af0",
+    "tests/test_fresh_distillation.py": "26dee17e9fada9c1a71d456c70611d33a367906f0f7e1548a22b94035418fe06"
   },
   "one_nfe_recipe_source_revision": "89827cef",
   "submission_adaptation": "Root README and TA dependency list supplied for midterm packaging; core model/training code unchanged.",
