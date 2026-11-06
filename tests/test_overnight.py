@@ -63,6 +63,37 @@ def main():
         resumed=torch.load(work/'four-extension/grid80/training-state.pt',weights_only=True)
         assert resumed['step']==1000 and resumed['optimizer']['momentum'].item()==7.
         assert json.loads((work/'four-extension/grid80/best-state.json').read_text())['step']==1000
+        # Full overnight orchestration must hand each fresh DMD fork an empty outdir.
+        from experiments.overnight_finish import main as finish
+        parent=work/'student-followups/anchor05';parent.mkdir()
+        torch.save({'step':5500},parent/'best-training-state.pt')
+        (parent/'best-state.json').write_text(json.dumps({'step':5500,'fid':39.9,
+            'checkpoint':'one-parent.ckpt','checkpoint_sha256':'one'}))
+        (work/'trajectory-four').mkdir()
+        (work/'trajectory-four/status.json').write_text(json.dumps({'phase':'complete'}))
+        (work/'four-extension/grid80/best-state.json').write_text(json.dumps({'step':2000,'fid':30.45,
+            'checkpoint':'four.ckpt','checkpoint_sha256':'four'}))
+        teacher=root/'runs/holdout-v1/teacher/snapshots';teacher.mkdir(parents=True)
+        (teacher/'teacher-0100000.ckpt').write_text('fixture')
+        board=work/'overnight-finish/four-extra';board.mkdir(parents=True)
+        (board/'best-state.json').write_text(json.dumps({'step':2500,'fid':20.,
+            'checkpoint':'four-extra.ckpt','checkpoint_sha256':'four-extra'}))
+        def launch(args,queue,name,settings,source,targets,limit):
+            out=queue/name
+            assert not out.exists(), 'Fresh trainer output was populated before launch'
+            out.mkdir()
+            row={'step':5750,'fid':39.8 if name=='control' else 39.,
+                 'checkpoint':name+'.ckpt','checkpoint_sha256':name}
+            (out/'best-state.json').write_text(json.dumps(row))
+        with patch('experiments.overnight_finish.ROOT',root),\
+             patch('experiments.overnight_finish.subprocess.check_output',return_value='test'),\
+             patch('experiments.overnight_finish.one_settings',return_value={}),\
+             patch('experiments.overnight_finish.blocks',side_effect=launch),\
+             patch('experiments.overnight_finish.official') as report:
+            finish(args)
+        assert report.call_args_list[0].args[2]==Path('teacher-features.ckpt')
+        assert report.call_args_list[0].args[3]=='one_nfe'
+        assert report.call_args_list[1].args[2]==Path('four-extra.ckpt')
     print('PASS: atomic full-state retention, step/score matching, best-only replacement, and upstream completion gate.')
 
 

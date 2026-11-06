@@ -72,10 +72,12 @@ def main(args):
               'fork_refresh_cache':True,'gan_reg_weight':.05}
     for name,weight in [('control',0.),('teacher-features',.02)]:
         if (root/name/'completion.json').exists():continue
-        pin_best(source,best,root/name)
+        # The parent is already immutable in anchor05. Keep a new fork's output
+        # empty until the trainer initializes it; its nonempty guard is deliberate.
         blocks(args,root,name,{**settings,'teacher_feature_weight':weight},source,
                (5750,6000,6250,6500),lambda step:best['fid']+(.75 if step<6000 else .25))
-    choices=[best,*[json.loads(p.read_text()) for p in root.glob('*/best-state.json')]]
+    choices=[best,*[json.loads((root/name/'best-state.json').read_text())
+                   for name in ('control','teacher-features') if (root/name/'best-state.json').exists()]]
     one=min(choices,key=lambda row:row['fid'])
     four_paths=[args.workdir/'student-followups/few-grid80/best-state.json',
                 args.workdir/'four-extension/grid80/best-state.json',

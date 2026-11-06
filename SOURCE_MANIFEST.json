@@ -155,10 +155,10 @@
     "data/holdout-v1/category_to_id.json": "7c27ec2a15fa4f70b5729319d596d3a80bc528cdeeb02f36b88877a6545b77e8",
     "data/holdout-v1/train_split.txt": "0f93a15a96a411077e761a25d21fbcf005a424e3ff1128c8ac40803ea54aa6e4",
     "experiments/overnight_one.py": "c4eaa2fbb5866bbf89112712adf2c5a0e912fcd0324ae1ce232400efc898af69",
-    "tests/test_overnight.py": "00dc34f245c7065f5656817e2ff022175a1f8c009361c813944c3be38d188a1e",
+    "tests/test_overnight.py": "51d56dcc35df11943eb46b54be434a4e33454a2939f1ce3852343aa4372df1f3",
     "experiments/student_followups.py": "61cec72f5e1d12694c09cad8db12656d247471d3c421ed9acb6f09158c4f1db1",
     "tests/test_trajectory.py": "8f7b109e5426044d154ecb24950db104f4b12d4f1662b28003f8c32c781db26b",
-    "experiments/overnight_finish.py": "d0c367a1b53c1186a8f4752dd1a8e2319d94ab4f74286c7b17ab8d450bc254a1"
+    "experiments/overnight_finish.py": "2a07d48e26418c30e42a4abc80ce6e767120b2199020fe3a009afdb4b5d6636c"
   },
   "one_nfe_recipe_source_revision": "89827cef",
   "submission_adaptation": "Root README and TA dependency list supplied for midterm packaging; core model/training code unchanged.",
