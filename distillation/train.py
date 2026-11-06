@@ -57,6 +57,10 @@ def train(args):
     if not 0 <= args.ema_decay < 1 or not 0 <= args.guidance < float("inf") or args.warmup_steps < 0:
         raise ValueError("Invalid EMA, guidance, or warmup")
     device = torch.device(args.device)
+    if args.memory_fraction is not None:
+        if device.type!='cuda' or not 0<args.memory_fraction<=1:
+            raise ValueError('Memory fraction requires CUDA and must be in (0,1]')
+        torch.cuda.set_per_process_memory_fraction(args.memory_fraction,device)
     if args.amp == "bf16" and (device.type != "cuda" or not torch.cuda.is_bf16_supported()):
         raise ValueError("BF16 requires a supported CUDA GPU; use --amp none on CPU")
     output = Path(args.outdir)
@@ -88,6 +92,8 @@ def train(args):
         initialization = {"checkpoint_sha256": file_hash(args.init_student),
                           "source_step": metadata["step"], "fresh_optimizer": True}
         del initial, metadata
+    if args.four_sigmas is not None:
+        student.set_four_sigmas(args.four_sigmas)
     target = copy.deepcopy(student).eval().requires_grad_(False)
     student_parameters = sum(p.numel() for p in student.parameters())
     teacher_parameters = sum(p.numel() for p in teacher.parameters())
@@ -120,6 +126,8 @@ def train(args):
         identity["data_partition"] = data_partition
     if initialization is not None:
         identity["initialization"] = initialization
+    if args.four_sigmas is not None:
+        identity['recipe']['four_sigmas']=list(args.four_sigmas)
     if args.trajectory_probability:
         identity["recipe"].update(trajectory_probability=args.trajectory_probability,
                                   trajectory_source=args.trajectory_source,
@@ -240,6 +248,8 @@ def parser():
     p.add_argument("--num-workers", type=int, default=4)
     p.add_argument("--guidance", type=float, default=2.0)
     p.add_argument("--num-intervals", type=int, default=40)
+    p.add_argument('--four-sigmas',type=float,nargs=4,help='Explicit inference grid, recorded in training identity')
+    p.add_argument('--memory-fraction',type=float,help='Optional CUDA allocator fraction for concurrent experiments')
     p.add_argument("--trajectory-probability", type=float, default=0., help="Fraction of microbatches using inference-grid consistency inputs")
     p.add_argument("--trajectory-source", choices=("student", "real"), default="student")
     p.add_argument("--lr", type=float, default=1e-4)

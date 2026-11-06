@@ -445,6 +445,46 @@ only after internal selection. Outputs, source hashes and statuses are under
 `results/nov03/multistep-dmd/`. `--sampling-nfe` is part of strict identity and
 cannot be changed even by a full-state fork. One-step defaults are unchanged.
 
+## Fresh distillation from the original teacher
+
+`python -m experiments.fresh_distillation --teacher ORIGINAL_TEACHER --cache ORIGINAL_TEACHER_CACHE --baseline-root THIS_REPO`
+creates `runs/fresh-distillation-original/`. The teacher SHA must match the
+original 20.18-FID V1 export. No existing consistency/DMD student or optimizer
+is used. The synthetic teacher cache may be reused, but its teacher hash and
+guidance are checked. The default cache for this experiment is the existing
+64-pairs/class cache; generation is reproducible with `target_cache` at seed
+123, 40 Heun steps and guidance 2.
+
+First initialize a new consistency student and EMA from the original teacher
+backbone and train for 6,000 updates: balanced fitting classes, batch 128,
+microbatch 16, LR 1e-4 with 500-update warmup, 80 intervals, EMA .95, BF16,
+pseudo-Huber loss and horizontal flips. Explicit inference sigmas are
+[80, 5, .5, .02]. At 2k/4k/6k evaluate both sampling budgets on the existing
+training-only monitoring reference, selecting a fresh export independently
+for each branch. The 1,510 monitor images are excluded from all new student
+and GAN fitting, leaving 15,569 images. The original teacher may have seen
+them, so this is not a clean teacher holdout. Official validation is never
+used for fitting or checkpoint selection.
+
+Then start independent DMD/GAN branches with fresh Adam states, fresh fake
+scores from the original teacher, and fresh GAN heads. The one-pass branch
+uses LR 5e-6 and .05 paired regression; the four-pass branch uses LR 2e-6 and
+backward simulation without paired regression. Both use batch 32/microbatch
+4, fake LR 1e-4, five fake updates, GAN coefficient .003, guidance 2 and 100
+generator-frozen critic warmup loops. Budgets are at most 3,000 one-pass and
+1,500 four-pass generator updates, with checks every 500 and a stop on a
+two-point deterioration from the previous best. Parents remain eligible.
+Each selected student receives an official-reference report after internal
+selection. Best/full states, source hashes, fitting manifest, histories,
+samples and status JSONs stay in the new output directory.
+
+The foundation can share memory with current bounded pilots. Its CUDA
+allocator is capped at .27 of the device. Before launching the two fresh
+DMD branches, the coordinator waits for the older student queues to finish
+or exit. Each branch has its own process, memory limit, output directory
+and resume identity. Explicit `--four-sigmas` is recorded in consistency
+identity; operational memory fractions do not change model semantics.
+
 ## Overnight one-pass queue
 
 `python -m experiments.overnight_one --baseline-root PREVIOUS_REPO --teacher ORIGINAL_TEACHER`

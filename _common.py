@@ -29,6 +29,8 @@ def options(values):
         flag = "--" + key.replace("_", "-")
         if isinstance(value, bool):
             result.append(flag if value else "--no-" + key.replace("_", "-"))
+        elif isinstance(value,(list,tuple)):
+            result.extend([flag,*[str(item) for item in value]])
         else:
             result.extend([flag, str(value)])
     return result
