@@ -22,8 +22,27 @@ from .train import atomic_save, check_memory, file_hash
 from .support import report_fid
 
 
-def generate(generator, noise, labels):
-    return generator(noise * generator.config.sigma_max, generator.config.sigma_max, labels)
+def generate(generator, noise, labels, *, nfe=1, stage=None, rng=None):
+    if nfe==1:
+        return generator(noise * generator.config.sigma_max, generator.config.sigma_max, labels)
+    if nfe!=4:
+        raise ValueError('DMD simulation supports one or four sampling calls')
+    stage=int(torch.randint(4,(),device=noise.device,generator=rng)) if stage is None else stage
+    if stage not in range(4):raise ValueError('Simulation stage must be 0..3')
+    sigmas=generator.sampling_sigmas(4,device=noise.device)
+    x=noise.float()*sigmas[0]
+    mode=generator.training
+    try:
+        generator.eval()
+        with torch.no_grad(), torch.autocast(device_type=noise.device.type,enabled=False):
+            for index in range(stage):
+                x=generator(x,sigmas[index],labels)
+                scale=(sigmas[index+1].square()-generator.config.sigma_min**2).clamp_min(0).sqrt()
+                x=x+scale*torch.randn(x.shape,device=x.device,dtype=x.dtype,generator=rng)
+    finally:
+        generator.train(mode)
+    # Differentiate only this sampled stage, not its inference prefix.
+    return generator(x.detach(),sigmas[stage],labels)
 
 
 @torch.no_grad()
@@ -56,8 +75,8 @@ def gradient_surrogate(images, gradient):
 def compatible_identity(saved, requested, *, fork=False, refresh_cache=False):
     """Strict resumes; explicit forks may change ratio and regression/GAN objectives."""
     defaults = dict(fake_updates=1, reg_decay_start=0, reg_decay_end=0, generator_freeze_until=0, generator_gan_weight=None, teacher_feature_weight=0.)
-    saved = {**saved, "recipe": {**defaults, **saved["recipe"]}}
-    requested = {**requested, "recipe": {**defaults, **requested["recipe"]}}
+    saved = {**saved, "recipe": {"sampling_nfe":1, **defaults, **saved["recipe"]}}
+    requested = {**requested, "recipe": {"sampling_nfe":1, **defaults, **requested["recipe"]}}
     if fork:
         for key in defaults:
             saved["recipe"].pop(key)
@@ -82,7 +101,7 @@ def regression_weight(args, step, gan_active):
 
 
 @torch.no_grad()
-def fresh_score_error(generator, fake, *, count, microbatch, seed):
+def fresh_score_error(generator, fake, *, count, microbatch, seed, nfe=1):
     """Weighted denoising error on independent current-generator samples; no RNG side effects."""
     device = next(generator.parameters()).device
     rng = torch.Generator(device=device).manual_seed(seed)
@@ -96,7 +115,7 @@ def fresh_score_error(generator, fake, *, count, microbatch, seed):
             n = min(microbatch, count-start)
             labels = torch.randint(c.num_classes, (n,), device=device, generator=rng)
             shape = (n, c.channels, c.resolution, c.resolution)
-            images = generate(generator, torch.randn(shape, device=device, generator=rng), labels)
+            images = generate(generator, torch.randn(shape, device=device, generator=rng), labels,nfe=nfe,rng=rng)
             noise = torch.randn(shape, device=device, generator=rng)
             for sigma in totals:
                 prediction = fake(images + sigma*noise, sigma, labels)
@@ -111,6 +130,7 @@ def fresh_score_error(generator, fake, *, count, microbatch, seed):
 
 
 def train(args):
+    args.nfe=args.sampling_nfe
     if not 0 <= args.teacher_feature_weight < float('inf'):
         raise ValueError('Teacher feature weight must be finite and nonnegative')
     if min(args.steps, args.batch_size, args.microbatch, args.save_every, args.log_every, args.fake_updates) < 1 or args.batch_size % args.microbatch:
@@ -174,7 +194,7 @@ def train(args):
         raise ValueError("Generator including auxiliary fake score or teacher exceeds 100M")
     identity = {"teacher_sha256": teacher_hash, "student_sha256": file_hash(args.student),
                 "cache_sha256": file_hash(args.cache), "recipe": {k: getattr(args,k) for k in (
-                    "guidance", "lr", "fake_lr", "reg_weight", "score_warmup", "batch_size", "amp", "seed", "fake_updates", "reg_decay_start", "reg_decay_end", "generator_freeze_until", "generator_gan_weight", "teacher_feature_weight")}}
+                    "guidance", "lr", "fake_lr", "reg_weight", "score_warmup", "batch_size", "amp", "seed", "fake_updates", "reg_decay_start", "reg_decay_end", "generator_freeze_until", "generator_gan_weight", "teacher_feature_weight", "sampling_nfe")}}
     if data_partition:
         identity["data_partition"] = data_partition
     if head is not None:
@@ -237,7 +257,7 @@ def train(args):
             noise = torch.randn(args.microbatch,c.channels,c.resolution,c.resolution,device=device)
             labels = torch.randint(c.num_classes,(args.microbatch,),device=device)
             with torch.autocast(device_type=device.type, dtype=torch.bfloat16, enabled=args.amp=="bf16"):
-                images = generate(generator, noise, labels)
+                images = generate(generator, noise, labels,nfe=args.sampling_nfe)
                 if update_generator:
                     grad = distribution_gradient(images, labels, teacher, fake, guidance=args.guidance)
                     dm = gradient_surrogate(images.float(), grad)
@@ -285,7 +305,7 @@ def train(args):
                         # Fresh samples after the generator update on every critic pass.
                         with torch.no_grad():
                             labels = torch.randint(c.num_classes, labels.shape, device=device)
-                            images = generate(generator, torch.randn_like(images), labels)
+                            images = generate(generator, torch.randn_like(images), labels,nfe=args.sampling_nfe)
                     loss = fake.loss(images.float(),labels)
                     fake_total += float(loss.detach())*args.microbatch/args.batch_size/args.fake_updates
                     if gan_active:
@@ -315,7 +335,7 @@ def train(args):
             with (output/"stats.jsonl").open("a") as stream: stream.write(json.dumps(row)+"\n")
         if args.diagnostic_every and (step == start+1 or step % args.diagnostic_every == 0 or step == args.steps):
             diagnostic = {"step": step, "fresh_fake_score_by_sigma": fresh_score_error(
-                generator, fake, count=args.diagnostic_count, microbatch=args.microbatch, seed=args.seed+20000+step)}
+                generator, fake, count=args.diagnostic_count, microbatch=args.microbatch, seed=args.seed+20000+step,nfe=args.sampling_nfe)}
             with (output/"diagnostics.jsonl").open("a") as stream:
                 stream.write(json.dumps(diagnostic)+"\n")
             print(json.dumps(diagnostic), flush=True)
@@ -324,7 +344,7 @@ def train(args):
             generator.eval()
             ids = cache["heldout"].nonzero().flatten()[:8]
             with torch.no_grad():
-                samples = generator.sample(cache["latents"][ids].shape,device=device,nfe=1,
+                samples = generator.sample(cache["latents"][ids].shape,device=device,nfe=args.sampling_nfe,
                     category=cache["labels"][ids].to(device),latents=cache["latents"][ids].to(device))
             save_image((samples+1)/2,output/f"samples-{step:06d}.png",nrow=4)
             exported = generator.export(category_to_id=mapping,step=step,guidance=args.guidance)
@@ -333,17 +353,20 @@ def train(args):
             exported["training_recipe"] = "DMD-adapted-v1"
             if head is not None:
                 exported["training_recipe"] = "DMD2-inspired-gan-v1"
-            atomic_save(exported,output/"one_nfe.ckpt")
+            name='one_nfe' if args.sampling_nfe==1 else 'few_nfe'
+            if args.sampling_nfe==4:exported['training_recipe']='DMD2-inspired-four-stage-simulation-v1'
+            atomic_save(exported,output/f'{name}.ckpt')
             snapshots = output/"snapshots"
             snapshots.mkdir(exist_ok=True)
-            atomic_save(exported,snapshots/f"one_nfe-{step:06d}.ckpt")
+            atomic_save(exported,snapshots/f"{name}-{step:06d}.ckpt")
             atomic_save({"identity":identity,"step":step,"generator":generator.state_dict(),
                 **({"gan_head":head.state_dict()} if head is not None else {}),
                 "fake":fake.state_dict(),"optimizer":optimizer.state_dict(),"fake_optimizer":fake_optimizer.state_dict(),
                 "rng_cpu":torch.get_rng_state(),"rng_cuda":torch.cuda.get_rng_state_all() if device.type=="cuda" else None},output/"training-state.pt")
             generator.train()
     if args.report_fid:
-        report_fid(args,output,device,checkpoint=output/"one_nfe.ckpt",mode="one_nfe",selection="fixed-final-pilot-step")
+        name='one_nfe' if args.sampling_nfe==1 else 'few_nfe'
+        report_fid(args,output,device,checkpoint=output/f'{name}.ckpt',mode=name,selection="fixed-final-pilot-step")
 
 
 def parser():
@@ -356,6 +379,7 @@ def parser():
     p.add_argument("--lr",type=float,default=5e-6)
     p.add_argument("--fake-lr",type=float,default=1e-4)
     p.add_argument("--fake-updates",type=int,default=1)
+    p.add_argument("--sampling-nfe",type=int,choices=(1,4),default=1,help="One-step DMD or uniform-stage four-step backward simulation")
     p.add_argument("--guidance",type=float,default=2.0)
     p.add_argument("--reg-weight",type=float,default=.25)
     p.add_argument("--score-warmup",type=int,default=50)

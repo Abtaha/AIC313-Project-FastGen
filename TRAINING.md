@@ -416,6 +416,35 @@ or select hyperparameters using validation. All plans, statuses, checkpoints and
 reports live under `results/nov03/overnight-finish/`. Student jobs are serialized
 beside the teacher; no unbounded continuation is enabled.
 
+## Four-pass DMD/GAN pilot
+
+`python -m experiments.multistep_dmd --baseline-root PREVIOUS_REPO --teacher ORIGINAL_TEACHER`
+starts two bounded four-pass DMD2-inspired pilots from the protected grid80
+step-1000 checkpoint (25.11 in its official-reference report). This differs
+from the completed local-Heun consistency trajectory pilot: generator updates
+now use distribution-matching and GAN losses on outputs at uniformly selected
+inference stages. The prefix follows the actual four-sigma sampler in FP32
+without gradients; only the selected stage is differentiated. The fake score
+learns the same generated-stage mixture. Sampling still takes exactly four
+network calls and retains [80, 5, .5, .02].
+
+Both arms use fresh Adam at generator LR 2e-6, fake LR 1e-4, batch 32/microbatch
+4, five fake updates, guidance 2 and GAN coefficient .003. The generator is
+frozen for 100 loops while the fake score and GAN head warm up. The `pure` arm
+has no paired regression; `anchored` adds .025 paired multiscale L2 at the
+initial sigma_max denoiser only. These are adaptations of DMD2 sections 4.3–4.5,
+not a claim to reproduce its ImageNet recipe exactly. No external pretrained
+weights or extra inference modules are used. Generator + fake/GAN head stays
+under 100M; original teacher is separate.
+
+Each arm gets up to 1,000 generator updates, with training-only FID checks at
+350/600/850/1100 total loops. Stop if FID exceeds the starting internal score
+by 1.0 at the first check or .5 thereafter. Include the protected parent in
+selection and report the selected four-pass candidate on official validation
+only after internal selection. Outputs, source hashes and statuses are under
+`results/nov03/multistep-dmd/`. `--sampling-nfe` is part of strict identity and
+cannot be changed even by a full-state fork. One-step defaults are unchanged.
+
 ## Overnight one-pass queue
 
 `python -m experiments.overnight_one --baseline-root PREVIOUS_REPO --teacher ORIGINAL_TEACHER`

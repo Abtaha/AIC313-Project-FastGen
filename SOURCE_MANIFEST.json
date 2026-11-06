@@ -103,7 +103,7 @@
     "README.md": "ad6db88a77e30cbe6c4970b27ae9df349ebafa7f0255b37c6569d1546ec51cba",
     "REFERENCE_RESULTS.json": "60b78de2758f76a444c77cec1754d048da518767a6017658ac38b21af33ac202",
     "SUBMISSION_MANIFEST.json": "60c1634be656f77a63e8df53335ee2ba637a3e0cbf630b92c13e05a54a8d8ec1",
-    "TRAINING.md": "7a64015c5470e8862f38e109f3e358aa244e85b83dbb5023b873ebef896d7bb0",
+    "TRAINING.md": "d1b367e8b3843a9f145dc40e60aa3d9a305b85a546f7ab3d66512d95b8167926",
     "_common.py": "d062a1ff1af70a39841ced712b27b326080e64c3faa91aaff3af04e8610bd817",
     "check_submission.py": "99b67f628109996bde58075d38500fcd84574dd4e0f3b128019eef5f9b588354",
     "checkpoints/few_nfe.ckpt": "0a96dc7f893a08c2dfd2832152644f07eacd56fc1e09407adf9d433f4d7e8692",
@@ -114,7 +114,7 @@
     "dataset.py": "47aea2b4ae6833198cbfa0801e0cc63fd5425dbe72bb77aec7f19a97ad90d063",
     "distillation/__init__.py": "eb4061fa4dc809c096ac6c7a7f747255a9306222aac3c3d9f5e44c9e6532c8f9",
     "distillation/adversarial.py": "cc5cca7d05345dbeff111b20d55d4bde90f64593f5e3e9329e0426c1d411ccbb",
-    "distillation/dmd.py": "6cd58fd84a7c8e29ac9caf356bd2f5fa65088ac60af629b894168b09994e9f7d",
+    "distillation/dmd.py": "7f7b23fd7514491ebf8f275820d4434a648465036c633d85fbf7a2faecd1f09c",
     "distillation/loss.py": "990a5818849d4292b040ea75c38f5da790180d3d809fcc597229868a3fe4a92c",
     "distillation/model.py": "64a27e59d8e1e0c471dfb22a88d3598b0e040033b95e5c658e332faeabde6230",
     "distillation/support.py": "1b64373a8efd66620e7ace20bc92e30d74a2850cb9b19b02a3bb14bf6cdebcdb",
@@ -158,7 +158,9 @@
     "tests/test_overnight.py": "51d56dcc35df11943eb46b54be434a4e33454a2939f1ce3852343aa4372df1f3",
     "experiments/student_followups.py": "61cec72f5e1d12694c09cad8db12656d247471d3c421ed9acb6f09158c4f1db1",
     "tests/test_trajectory.py": "8f7b109e5426044d154ecb24950db104f4b12d4f1662b28003f8c32c781db26b",
-    "experiments/overnight_finish.py": "2a07d48e26418c30e42a4abc80ce6e767120b2199020fe3a009afdb4b5d6636c"
+    "experiments/overnight_finish.py": "2a07d48e26418c30e42a4abc80ce6e767120b2199020fe3a009afdb4b5d6636c",
+    "experiments/multistep_dmd.py": "3654286525fe621526c64b61428b251ed8773e90e56e6de7619cf009abdecd2f",
+    "tests/test_multistep_dmd.py": "e57c71a5593ce2ee35971a65d049aff54ed0130638361903f759136cbe6436b9"
   },
   "one_nfe_recipe_source_revision": "89827cef",
   "submission_adaptation": "Root README and TA dependency list supplied for midterm packaging; core model/training code unchanged.",
