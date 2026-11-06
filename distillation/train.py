@@ -60,7 +60,8 @@ def train(args):
     if args.memory_fraction is not None:
         if device.type!='cuda' or not 0<args.memory_fraction<=1:
             raise ValueError('Memory fraction requires CUDA and must be in (0,1]')
-        torch.cuda.set_per_process_memory_fraction(args.memory_fraction,device)
+        index=device.index if device.index is not None else torch.cuda.current_device()
+        torch.cuda.set_per_process_memory_fraction(args.memory_fraction,index)
     if args.amp == "bf16" and (device.type != "cuda" or not torch.cuda.is_bf16_supported()):
         raise ValueError("BF16 requires a supported CUDA GPU; use --amp none on CPU")
     output = Path(args.outdir)
