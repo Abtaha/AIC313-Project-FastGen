@@ -145,7 +145,12 @@ def one_conditioning(args):
 
 def score_noise(args,root,baseline):
     parent=args.workdir/'student-followups/anchor05/best-training-state.pt'
-    recipe={**one_settings(args),'cache':str(args.workdir/'one-followups/teacher-cache16.pt'),
+    original=json.loads((parent.parent/'config.json').read_text())['arguments']
+    keys=('teacher','student','cache','data_root','split_dir','lr','fake_lr','guidance','reg_weight',
+          'score_warmup','gan_weight','gan_start','amp','seed','batch_size','fake_updates',
+          'generator_freeze_until','gan_exclude_manifest')
+    recipe={**{k:original[k] for k in keys},'microbatch':8,'memory_fraction':.34,
+            'memory_limit_gb':7.,'log_every':25,'save_every':1000000,'diagnostic_every':250,'diagnostic_count':16,
             'fork_refresh_cache':True,'gan_reg_weight':.05,'dm_p_mean':0.,'dm_p_std':1.2}
     out=root/'score-noise';state=out/'training-state.pt'
     initial={'step':5500,'fid':baseline['training_reference_fid'],'checkpoint':baseline['checkpoint'],
