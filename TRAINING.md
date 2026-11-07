@@ -485,6 +485,25 @@ or exit. Each branch has its own process, memory limit, output directory
 and resume identity. Explicit `--four-sigmas` is recorded in consistency
 identity; operational memory fractions do not change model semantics.
 
+## One-pass conditioning pilot from the winning four-pass backbone
+
+`python -m experiments.multistep_dmd --task one-conditioning --baseline-root THIS_REPO --teacher ORIGINAL_TEACHER`
+tests fixed one-pass conditioning sigmas 80, 5 and 1 on the training-only monitor,
+using the winning anchored four-stage step-350 weights. This is a bounded test
+of a conditioning bottleneck, motivated by the conditioning-shift discussion
+in DMD2 appendix F.4; it is not that paper's SDXL implementation. Only the best
+internal probe receives 100 critic-warmup loops and up to 1,000 generator updates
+with .025 paired anchoring. Check every 250 generator updates and stop on a
+two-point deterioration. Report the internally selected endpoint afterward.
+
+An inference buffer stores the chosen fixed level and adds no parameters or
+calls. A zero default preserves legacy discretization exactly; old checkpoints
+without the buffer load with that default. Four-pass sampling is unchanged.
+Every one-pass probe and exported endpoint still uses one SongUNet call. Outputs
+live in `results/nov03/one-conditioning/`; all inference snapshots and the latest
+full state are retained. Unlike earlier pilots, this bounded run does not keep
+a second best optimizer copy, to reserve disk space before the deadline.
+
 ## Overnight one-pass queue
 
 `python -m experiments.overnight_one --baseline-root PREVIOUS_REPO --teacher ORIGINAL_TEACHER`

@@ -23,11 +23,15 @@ class ConsistencyStudent(nn.Module):
         ramp = torch.arange(4, dtype=torch.float32) / 4
         self.register_buffer("four_sigmas", (c.sigma_max**(1/c.rho) + ramp *
             (c.sigma_min**(1/c.rho)-c.sigma_max**(1/c.rho))) ** c.rho)
+        # Zero preserves the exact legacy sampler discretization for old exports.
+        self.register_buffer('one_sigma',torch.tensor(0.,dtype=torch.float32))
 
     def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
         # Original consistency checkpoints predate the persistent sampling grid.
         if prefix + "four_sigmas" not in state_dict:
             state_dict[prefix + "four_sigmas"] = self.four_sigmas.clone()
+        if prefix+'one_sigma' not in state_dict:
+            state_dict[prefix+'one_sigma']=self.one_sigma.clone()
         super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
 
     @torch.no_grad()
@@ -39,6 +43,13 @@ class ConsistencyStudent(nn.Module):
         if not torch.isclose(values[0], values.new_tensor(c.sigma_max)) or values[-1] < c.sigma_min:
             raise ValueError("Grid must start at sigma_max and stay >= sigma_min")
         self.four_sigmas.copy_(values)
+
+    @torch.no_grad()
+    def set_one_sigma(self,value):
+        value=float(value)
+        if not self.config.sigma_min<=value<=self.config.sigma_max:
+            raise ValueError('One-pass conditioning sigma must be within the trained range')
+        self.one_sigma.fill_(value)
 
     @classmethod
     def load_checkpoint(cls, path, device="cpu"):
@@ -80,11 +91,11 @@ class ConsistencyStudent(nn.Module):
             raise ValueError("Student sampling supports exactly 1 or 4 NFE")
         if nfe == 4:
             return self.four_sigmas.to(device)
-        c = self.config
-        # Four positive levels; zero is never passed to the log-noise embedding.
-        ramp = torch.arange(nfe, device=device, dtype=torch.float32) / nfe
-        return (c.sigma_max**(1/c.rho) + ramp *
-                (c.sigma_min**(1/c.rho) - c.sigma_max**(1/c.rho))) ** c.rho
+        if float(self.one_sigma)>0:
+            return self.one_sigma.to(device).reshape(1)
+        c=self.config
+        ramp=torch.zeros(1,device=device,dtype=torch.float32)
+        return (c.sigma_max**(1/c.rho)+ramp*(c.sigma_min**(1/c.rho)-c.sigma_max**(1/c.rho)))**c.rho
 
     @torch.no_grad()
     def sample(self, shape, *, device="cuda", category=None, nfe=1, generator=None, latents=None):

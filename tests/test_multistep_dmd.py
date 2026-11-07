@@ -22,6 +22,20 @@ def main():
     student=ConsistencyStudent.from_teacher(teacher).eval()
     student.set_four_sigmas([80,5,.5,.02])
     labels=torch.tensor([0,1]);shape=(2,3,8,8)
+    legacy=student.sampling_sigmas(1,device='cpu').clone()
+    old_state={k:v for k,v in student.state_dict().items() if k!='one_sigma'}
+    restored=ConsistencyStudent(config);restored.load_state_dict(old_state)
+    torch.testing.assert_close(restored.sampling_sigmas(1,device='cpu'),legacy,rtol=0,atol=0)
+    for sigma in (80.,5.,1.):
+        student.set_one_sigma(sigma);student.eval()
+        seen=[];hook=student.register_forward_pre_hook(lambda _,args:seen.append(float(torch.as_tensor(args[1]))))
+        student.sample(shape,device='cpu',category=labels,nfe=1);hook.remove()
+        assert seen==[sigma]
+        x=generate(student,torch.randn(shape),labels,nfe=1)
+        assert torch.isfinite(x).all()
+        data=student.export(category_to_id={'a':0,'b':1,'c':2},step=0,guidance=2.)
+        clone=ConsistencyStudent(config);clone.load_state_dict({k.removeprefix('backbone.'):v for k,v in data['state_dict'].items()})
+        assert clone.one_sigma.item()==sigma
     inputs=[]
     hook=student.register_forward_pre_hook(lambda module,args:inputs.append(args[0].detach().clone()))
     torch.manual_seed(17)

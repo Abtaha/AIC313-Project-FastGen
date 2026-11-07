@@ -24,7 +24,8 @@ from .support import report_fid
 
 def generate(generator, noise, labels, *, nfe=1, stage=None, rng=None):
     if nfe==1:
-        return generator(noise * generator.config.sigma_max, generator.config.sigma_max, labels)
+        sigma=generator.one_sigma if float(generator.one_sigma)>0 else generator.config.sigma_max
+        return generator(noise*sigma,sigma,labels)
     if nfe!=4:
         raise ValueError('DMD simulation supports one or four sampling calls')
     stage=int(torch.randint(4,(),device=noise.device,generator=rng)) if stage is None else stage

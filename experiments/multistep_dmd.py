@@ -82,14 +82,71 @@ def main(args):
     write(root/'status.json',{'phase':'complete'})
 
 
+def one_conditioning(args):
+    from distillation.model import ConsistencyStudent
+    source=args.workdir/'multistep-dmd/anchored/snapshots/few_nfe-000350.ckpt'
+    root=args.workdir/'one-conditioning';root.mkdir(parents=True,exist_ok=True)
+    write(root/'plan.json',{'source_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
+        'source_sha256':digest(source),'source_four_pass_validation_fid':21.7534219894452,
+        'hypothesis':'Lower fixed conditioning may provide a better one-pass generator initialization.',
+        'levels':[80.,5.,1.],'selection':'Training-only reference, same seed/batch. No official-reference sweep.',
+        'nfe':1,'generator_updates_max':1000,'critic_warmup':100,'regression':.025,
+        'reference':'DMD2 F.4 motivates testing conditioning shifts; this EDM adaptation is experimental.'})
+    if args.dry_run:return
+    probes=root/'probes';probes.mkdir(exist_ok=True)
+    rows=[]
+    for level in (80.,5.,1.):
+        checkpoint=probes/f'sigma-{level:g}.ckpt'
+        if not checkpoint.exists():
+            student=ConsistencyStudent.load_checkpoint(source)
+            metadata=torch.load(source,map_location='cpu',weights_only=True)
+            student.set_one_sigma(level)
+            payload=student.export(category_to_id=metadata['category_to_id'],step=0,guidance=2.)
+            payload['conditioning_source_sha256']=digest(source)
+            torch.save(payload,checkpoint)
+            del student,metadata,payload
+        destination=root/'evaluations'/f'probe-{level:g}'
+        write(root/'status.json',{'phase':'probing','sigma':level})
+        execute(evaluation_command(args,checkpoint,'student',destination),root/'evaluation.log')
+        result=json.loads((destination/'fid.json').read_text())
+        rows.append({'sigma':level,'fid':result['training_reference_fid'],'step':0,
+                     'checkpoint':str(checkpoint),'checkpoint_sha256':digest(checkpoint)})
+    parent=min(rows,key=lambda row:row['fid']);write(root/'probe-results.json',rows)
+    recipe={**settings(args,.025),'student':parent['checkpoint'],'sampling_nfe':1,
+            'lr':5e-6,'save_every':1000000,'seed':789}
+    out=root/'train';state=out/'training-state.pt';history=[parent]
+    for step in (100,350,600,850,1100):
+        saved=torch.load(state,map_location='cpu',weights_only=True)['step'] if state.exists() else 0
+        if saved<step:
+            write(root/'status.json',{'phase':'training','sigma':parent['sigma'],'target_step':step})
+            execute([sys.executable,'-u','-m','distillation.dmd',*options(recipe),'--outdir',out,
+                     '--steps',step,*(['--resume',state] if state.exists() else [])],root/'train.log')
+        if step==100:continue
+        checkpoint=out/'snapshots'/f'one_nfe-{step:06d}.ckpt'
+        destination=root/'evaluations'/f'train-{step}'
+        execute(evaluation_command(args,checkpoint,'student',destination),root/'evaluation.log')
+        result=json.loads((destination/'fid.json').read_text())
+        row={'step':step,'fid':result['training_reference_fid'],'checkpoint':str(checkpoint),'checkpoint_sha256':digest(checkpoint)}
+        previous=min(history,key=lambda row:row['fid'])
+        if row['fid']<previous['fid']:write(out/'best-state.json',row)
+        history.append(row)
+        write(root/'history.json',history)
+        if row['fid']>previous['fid']+2:break
+    selected=min(history,key=lambda row:row['fid']);write(root/'selected.json',selected)
+    official(args,root,Path(selected['checkpoint']),'one_nfe','selected-one')
+    write(root/'status.json',{'phase':'complete'})
+
+
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--baseline-root',type=Path,required=True)
     parser.add_argument('--teacher',type=Path,required=True)
     parser.add_argument('--workdir',type=Path,default=ROOT/'results/nov03')
     parser.add_argument('--dry-run',action='store_true')
+    parser.add_argument('--task',choices=('four','one-conditioning'),default='four')
     args=parser.parse_args();args.workdir=args.workdir.resolve()
-    try:main(args)
+    try:(one_conditioning if args.task=='one-conditioning' else main)(args)
     except Exception as error:
-        write(args.workdir/'multistep-dmd/status.json',{'phase':'failed','error':str(error)})
+        name='one-conditioning' if args.task=='one-conditioning' else 'multistep-dmd'
+        write(args.workdir/name/'status.json',{'phase':'failed','error':str(error)})
         raise
