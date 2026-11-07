@@ -8,7 +8,7 @@ import sys
 import torch
 
 from _common import ROOT, options
-from experiments.refinement import digest, execute, evaluation_command, write
+from experiments.refinement import digest, execute, evaluation_command, write, one_settings
 from experiments.overnight_one import pin_best
 from experiments.overnight_finish import official
 
@@ -112,6 +112,12 @@ def one_conditioning(args):
         rows.append({'sigma':level,'fid':result['training_reference_fid'],'step':0,
                      'checkpoint':str(checkpoint),'checkpoint_sha256':digest(checkpoint)})
     parent=min(rows,key=lambda row:row['fid']);write(root/'probe-results.json',rows)
+    baseline=json.loads((args.workdir/'student-followups/evaluations/anchor05-5500/fid.json').read_text())
+    if parent['fid']>=baseline['training_reference_fid']:
+        write(root/'quality-gate.json',{'decision':'Reject weaker frozen initializations; use protected best one-pass full state.',
+            'best_probe_internal_fid':parent['fid'],'baseline_internal_fid':baseline['training_reference_fid']})
+        score_noise(args,root,baseline)
+        return
     recipe={**settings(args,.025),'student':parent['checkpoint'],'sampling_nfe':1,
             'lr':5e-6,'save_every':1000000,'seed':789}
     out=root/'train';state=out/'training-state.pt';history=[parent]
@@ -134,6 +140,40 @@ def one_conditioning(args):
         if row['fid']>previous['fid']+2:break
     selected=min(history,key=lambda row:row['fid']);write(root/'selected.json',selected)
     official(args,root,Path(selected['checkpoint']),'one_nfe','selected-one')
+    write(root/'status.json',{'phase':'complete'})
+
+
+def score_noise(args,root,baseline):
+    parent=args.workdir/'student-followups/anchor05/best-training-state.pt'
+    recipe={**one_settings(args),'cache':str(args.workdir/'one-followups/teacher-cache16.pt'),
+            'fork_refresh_cache':True,'gan_reg_weight':.05,'dm_p_mean':0.,'dm_p_std':1.2}
+    out=root/'score-noise';state=out/'training-state.pt'
+    initial={'step':5500,'fid':baseline['training_reference_fid'],'checkpoint':baseline['checkpoint'],
+             'checkpoint_sha256':baseline['checkpoint_sha256']}
+    history=[initial]
+    write(root/'score-noise-plan.json',{'parent_sha256':digest(parent),'changed_factor':'Generator score corruption log-sigma mean -1.2 -> 0.0; std 1.2 unchanged.',
+        'hypothesis':'More moderate/high-noise score supervision may help global structure; unproven adaptation.',
+        'fake_training_distribution':'Unchanged original EDM loss.','recipe':recipe,
+        'max_generator_updates':1000,'extension_gate':'After 500, continue only if internal FID improved by at least .5.',
+        'selection':'Training-only reference; original teacher and legacy parents may have seen it.'})
+    for step in (5750,6000,6250,6500):
+        saved=torch.load(state,map_location='cpu',weights_only=True)['step'] if state.exists() else 0
+        if saved<step:
+            write(root/'status.json',{'phase':'score_noise_training','target_step':step})
+            restore=['--resume',state] if state.exists() else ['--fork-from',parent]
+            execute([sys.executable,'-u','-m','distillation.dmd',*options(recipe),
+                     '--outdir',out,'--steps',step,*restore],root/'score-noise.log')
+        checkpoint=out/'snapshots'/f'one_nfe-{step:06d}.ckpt'
+        destination=root/'evaluations'/f'score-noise-{step}'
+        execute(evaluation_command(args,checkpoint,'student',destination),root/'evaluation.log')
+        result=json.loads((destination/'fid.json').read_text())
+        row={'step':step,'fid':result['training_reference_fid'],'checkpoint':str(checkpoint),'checkpoint_sha256':digest(checkpoint)}
+        history.append(row);write(root/'score-noise-history.json',history)
+        if row['fid']>initial['fid']+.75:break
+        if step>=6000 and min(r['fid'] for r in history)>initial['fid']-.5:break
+    selected=min(history,key=lambda row:row['fid']);write(root/'selected.json',selected)
+    if selected['checkpoint']!=initial['checkpoint']:
+        official(args,root,Path(selected['checkpoint']),'one_nfe','selected-score-noise')
     write(root/'status.json',{'phase':'complete'})
 
 

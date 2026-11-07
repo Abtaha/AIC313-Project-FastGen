@@ -9,7 +9,7 @@ import torch
 
 from teacher import EDMTeacher, TeacherConfig
 from distillation.model import ConsistencyStudent
-from distillation.dmd import compatible_identity, fresh_score_error, regression_weight
+from distillation.dmd import compatible_identity, fresh_score_error, regression_weight, distribution_gradient
 from distillation.dmd import parser as dmd_parser, train as train_dmd
 from distillation.support import target_cache, teacher_feature_loss
 from distillation.train import file_hash
@@ -48,6 +48,19 @@ def main():
     feature_recipe['recipe']['teacher_feature_weight']=.02
     assert not compatible_identity(original,feature_recipe)
     assert compatible_identity(original,feature_recipe,fork=True)
+    noise_recipe=copy.deepcopy(original);noise_recipe['recipe']['dm_p_mean']=0.
+    assert compatible_identity(original,noise_recipe,fork=True)
+    assert not compatible_identity(original,noise_recipe)
+    class Real(torch.nn.Module):
+        def guided(self,x,sigma,labels,guidance):return torch.zeros_like(x)
+    class Fake(torch.nn.Module):
+        def forward(self,x,sigma,labels):return .1*x
+    sample=torch.ones(2,3,8,8);labels=torch.tensor([0,1])
+    torch.manual_seed(11);legacy=distribution_gradient(sample,labels,Real(),Fake())
+    torch.manual_seed(11);explicit=distribution_gradient(sample,labels,Real(),Fake(),p_mean=-1.2,p_std=1.2)
+    torch.testing.assert_close(legacy,explicit,rtol=0,atol=0)
+    torch.manual_seed(11);broader=distribution_gradient(sample,labels,Real(),Fake(),p_mean=0.,p_std=1.2)
+    assert torch.isfinite(broader).all() and not torch.equal(legacy,broader)
     anchor={'recipe':{'gan_reg_weight':.025,'gan_weight':.003,'lr':5e-6}}
     stronger=copy.deepcopy(anchor)
     stronger['recipe']['gan_reg_weight']=.05

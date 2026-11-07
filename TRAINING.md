@@ -504,6 +504,16 @@ live in `results/nov03/one-conditioning/`; all inference snapshots and the lates
 full state are retained. Unlike earlier pilots, this bounded run does not keep
 a second best optimizer copy, to reserve disk space before the deadline.
 
+The pilot gates conditioning probes against the protected best one-pass model
+on the same internal monitor. If every probe is worse, it rejects training that
+initialization and instead forks the best one-pass full state. This fallback
+changes only the generator's score-corruption log-sigma mean from -1.2 to 0.0,
+keeping std 1.2 and the fake-score training distribution unchanged. This tests
+more moderate/high-noise supervision as a possible structural signal; it is a
+hypothesis, not an established improvement. After 500 updates it continues to
+1,000 only if internal FID improved by at least .5. Normal resumes remain strict;
+an explicit fork may change the recorded score-corruption distribution.
+
 ## Overnight one-pass queue
 
 `python -m experiments.overnight_one --baseline-root PREVIOUS_REPO --teacher ORIGINAL_TEACHER`

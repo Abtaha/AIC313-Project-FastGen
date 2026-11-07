@@ -47,9 +47,9 @@ def generate(generator, noise, labels, *, nfe=1, stage=None, rng=None):
 
 
 @torch.no_grad()
-def distribution_gradient(images, labels, teacher, fake, *, guidance=2.0, sigma=None, noise=None):
+def distribution_gradient(images, labels, teacher, fake, *, guidance=2.0, sigma=None, noise=None,p_mean=-1.2,p_std=1.2):
     if sigma is None:
-        sigma = (torch.randn(len(images), device=images.device)*1.2-1.2).exp().clamp(.05, 20)
+        sigma = (torch.randn(len(images), device=images.device)*p_std+p_mean).exp().clamp(.05, 20)
     if noise is None:
         noise = torch.randn_like(images)
     noisy = images.detach().float() + sigma[:, None, None, None]*noise
@@ -75,7 +75,7 @@ def gradient_surrogate(images, gradient):
 
 def compatible_identity(saved, requested, *, fork=False, refresh_cache=False):
     """Strict resumes; explicit forks may change ratio and regression/GAN objectives."""
-    defaults = dict(fake_updates=1, reg_decay_start=0, reg_decay_end=0, generator_freeze_until=0, generator_gan_weight=None, teacher_feature_weight=0.)
+    defaults = dict(fake_updates=1, reg_decay_start=0, reg_decay_end=0, generator_freeze_until=0, generator_gan_weight=None, teacher_feature_weight=0.,dm_p_mean=-1.2,dm_p_std=1.2)
     saved = {**saved, "recipe": {"sampling_nfe":1, **defaults, **saved["recipe"]}}
     requested = {**requested, "recipe": {"sampling_nfe":1, **defaults, **requested["recipe"]}}
     if fork:
@@ -131,6 +131,8 @@ def fresh_score_error(generator, fake, *, count, microbatch, seed, nfe=1):
 
 
 def train(args):
+    if not torch.isfinite(torch.tensor([args.dm_p_mean,args.dm_p_std])).all() or args.dm_p_std<=0:
+        raise ValueError('DMD corruption parameters must be finite with positive standard deviation')
     args.nfe=args.sampling_nfe
     if not 0 <= args.teacher_feature_weight < float('inf'):
         raise ValueError('Teacher feature weight must be finite and nonnegative')
@@ -195,7 +197,7 @@ def train(args):
         raise ValueError("Generator including auxiliary fake score or teacher exceeds 100M")
     identity = {"teacher_sha256": teacher_hash, "student_sha256": file_hash(args.student),
                 "cache_sha256": file_hash(args.cache), "recipe": {k: getattr(args,k) for k in (
-                    "guidance", "lr", "fake_lr", "reg_weight", "score_warmup", "batch_size", "amp", "seed", "fake_updates", "reg_decay_start", "reg_decay_end", "generator_freeze_until", "generator_gan_weight", "teacher_feature_weight", "sampling_nfe")}}
+                    "guidance", "lr", "fake_lr", "reg_weight", "score_warmup", "batch_size", "amp", "seed", "fake_updates", "reg_decay_start", "reg_decay_end", "generator_freeze_until", "generator_gan_weight", "teacher_feature_weight", "sampling_nfe", "dm_p_mean", "dm_p_std")}}
     if data_partition:
         identity["data_partition"] = data_partition
     if head is not None:
@@ -260,7 +262,8 @@ def train(args):
             with torch.autocast(device_type=device.type, dtype=torch.bfloat16, enabled=args.amp=="bf16"):
                 images = generate(generator, noise, labels,nfe=args.sampling_nfe)
                 if update_generator:
-                    grad = distribution_gradient(images, labels, teacher, fake, guidance=args.guidance)
+                    grad = distribution_gradient(images, labels, teacher, fake, guidance=args.guidance,
+                                                 p_mean=args.dm_p_mean,p_std=args.dm_p_std)
                     dm = gradient_surrogate(images.float(), grad)
                     reg = images.new_zeros(())
                     # Consume the same paired-index RNG stream after decay reaches zero.
@@ -389,6 +392,8 @@ def parser():
     p.add_argument("--gan-reg-weight",type=float,default=.025,help="Regression weight once the GAN is active; 0 removes regression")
     p.add_argument("--generator-gan-weight", type=float, help="Generator-only GAN coefficient; defaults to gan-weight, critic coefficient unchanged")
     p.add_argument("--teacher-feature-weight",type=float,default=0.,help="Experimental spatial cosine anchor using frozen original-teacher features; no external network")
+    p.add_argument('--dm-p-mean',type=float,default=-1.2,help='Generator score-corruption log-sigma mean; fake-score training distribution unchanged')
+    p.add_argument('--dm-p-std',type=float,default=1.2)
     p.add_argument("--fork-refresh-cache", action="store_true", help="Allow an explicit fork to replace paired targets while retaining the same score teacher")
     p.add_argument("--reg-decay-start", type=int, default=0)
     p.add_argument("--reg-decay-end", type=int, default=0, help="Absolute loop step at which regression reaches zero; 0 disables decay")
